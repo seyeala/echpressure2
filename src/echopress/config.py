@@ -27,7 +27,7 @@ class Settings:
     beta: float = 0.0
     channel: int = 0
     O_max: float = 0.1
-    tie_break: str = "earlier"
+    tie_breaker: str = "earliest"
     W: int = 5
     kappa: float = 1.0
 
@@ -40,7 +40,7 @@ class Settings:
             "beta": ("ECHOPRESS_BETA", float),
             "channel": ("ECHOPRESS_CHANNEL", int),
             "O_max": ("ECHOPRESS_O_MAX", float),
-            "tie_break": ("ECHOPRESS_TIE_BREAK", str),
+            "tie_breaker": ("ECHOPRESS_TIE_BREAKER", str),
             "W": ("ECHOPRESS_W", int),
             "kappa": ("ECHOPRESS_KAPPA", float),
         }
