@@ -19,6 +19,8 @@ application specific units.
 from dataclasses import dataclass
 import numpy as np
 
+from ..config import Settings
+
 
 @dataclass
 class CalibrationCoefficients:
@@ -48,7 +50,15 @@ class CalibrationCoefficients:
             raise ValueError("alpha and beta must have identical shapes")
 
 
-def apply_calibration(voltage: np.ndarray, coeffs: CalibrationCoefficients, channel: int) -> np.ndarray:
+def apply_calibration(
+    voltage: np.ndarray,
+    coeffs: CalibrationCoefficients | None = None,
+    channel: int | None = None,
+    *,
+    settings: Settings | None = None,
+    alpha: float | None = None,
+    beta: float | None = None,
+) -> np.ndarray:
     """Apply affine calibration to a voltage trace for a specific channel.
 
     Parameters
@@ -58,24 +68,42 @@ def apply_calibration(voltage: np.ndarray, coeffs: CalibrationCoefficients, chan
         will be broadcast against the scalar coefficients. The calibration is
         applied element-wise.
     coeffs:
-        :class:`CalibrationCoefficients` containing per-channel ``alpha`` and
-        ``beta`` terms. ``coeffs.alpha[channel]`` and ``coeffs.beta[channel]``
-        are used for the transformation.
+        Optional :class:`CalibrationCoefficients` containing per-channel
+        ``alpha`` and ``beta`` terms.  If provided these take precedence over
+        values supplied via ``settings`` or explicit ``alpha``/``beta``
+        arguments.
     channel:
-        Index of the channel whose coefficients should be applied. Must be
-        compatible with ``coeffs``.
+        Index of the channel whose coefficients should be applied. If ``None``
+        the value is taken from ``settings.channel``.
+    settings:
+        Optional :class:`~echopress.config.Settings` instance providing default
+        values.
+    alpha, beta:
+        Scalar calibration coefficients.  These override any corresponding
+        values drawn from ``coeffs`` or ``settings``.
 
     Returns
     -------
     numpy.ndarray
         Calibrated values with the same shape as ``voltage``.
-
-    Raises
-    ------
-    IndexError
-        If ``channel`` is outside the valid range of the coefficient arrays.
     """
 
-    alpha = coeffs.alpha[channel]
-    beta = coeffs.beta[channel]
+    if settings is None:
+        settings = Settings()
+
+    if channel is None:
+        channel = settings.channel
+
+    if coeffs is not None:
+        alpha = coeffs.alpha[channel]
+        beta = coeffs.beta[channel]
+    else:
+        if alpha is None:
+            alpha = settings.alpha
+        if beta is None:
+            beta = settings.beta
+
+    if alpha is None or beta is None:
+        raise ValueError("alpha and beta coefficients must be specified")
+
     return alpha * np.asarray(voltage) + beta

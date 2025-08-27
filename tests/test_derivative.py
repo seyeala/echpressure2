@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 
+from echopress.config import Settings
 from core import central_difference, local_linear, savgol
 
 
@@ -14,3 +15,23 @@ def test_sine_derivative_matches_cos(estimator, W):
     expected = np.cos(t)
     assert result.shape == expected.shape
     assert np.allclose(result, expected, atol=1e-3)
+
+
+def test_defaults_from_settings():
+    t = np.linspace(0, 1, 11)
+    series = np.sin(t)
+    dt = t[1] - t[0]
+    settings = Settings(W=5, kappa=1.0)
+    expected = central_difference(series, dt, 5)
+    result = central_difference(series, dt, settings=settings)
+    np.testing.assert_allclose(result, expected)
+
+
+def test_override_settings():
+    t = np.linspace(0, 1, 11)
+    series = np.sin(t)
+    dt = t[1] - t[0]
+    settings = Settings(W=7, kappa=1.0)
+    result = central_difference(series, dt, W=3, settings=settings)
+    expected = central_difference(series, dt, 3)
+    np.testing.assert_allclose(result, expected)

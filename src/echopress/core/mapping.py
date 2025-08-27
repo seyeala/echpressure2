@@ -8,6 +8,7 @@ from typing import Sequence, Dict, Any
 import numpy as np
 
 from ..ingest import OStream, PStreamRecord
+from ..config import Settings
 
 
 @dataclass
@@ -36,10 +37,11 @@ def align_streams(
     ostream: OStream,
     pstream: Sequence[PStreamRecord],
     *,
-    tie_break: str,
-    O_max: float,
-    W: int,
-    kappa: float,
+    settings: Settings | None = None,
+    tie_break: str | None = None,
+    O_max: float | None = None,
+    W: int | None = None,
+    kappa: float | None = None,
 ) -> AlignmentResult:
     """Align O-stream sample midpoints to the nearest P-stream timestamps.
 
@@ -49,16 +51,12 @@ def align_streams(
         :class:`OStream` containing sample timestamps ``T^O`` in seconds.
     pstream:
         Sequence of :class:`PStreamRecord` objects ordered by timestamp.
-    tie_break:
-        Strategy used when a midpoint is equidistant from two P-stream
-        timestamps.  ``"earlier"`` selects the earlier record whereas
-        ``"later"`` selects the later one.
-    O_max:
-        Maximum permissible alignment error in seconds.  If any midpoint is
-        farther than ``O_max`` from the nearest P-stream record a
-        :class:`ValueError` is raised.
-    W, kappa:
-        Currently unused but retained for diagnostic purposes.
+    settings:
+        Optional :class:`~echopress.config.Settings` instance providing default
+        values for the remaining parameters.
+    tie_break, O_max, W, kappa:
+        Individual overrides for the respective parameters.  Any value set here
+        takes precedence over those supplied in ``settings``.
 
     Returns
     -------
@@ -66,6 +64,14 @@ def align_streams(
         Dataclass containing the index mapping, the per-midpoint alignment
         error array and any diagnostics.
     """
+    if settings is None:
+        settings = Settings()
+
+    tie_break = tie_break or settings.tie_break
+    O_max = settings.O_max if O_max is None else O_max
+    W = settings.W if W is None else W
+    kappa = settings.kappa if kappa is None else kappa
+
     if tie_break not in {"earlier", "later"}:
         raise ValueError("tie_break must be 'earlier' or 'later'")
 

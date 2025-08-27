@@ -14,6 +14,8 @@ from typing import Sequence
 import numpy as np
 from scipy.signal import savgol_filter
 
+from echopress.config import Settings
+
 
 def _validate_window(W: int, n: int) -> None:
     """Validate window size ``W`` against ``n`` samples."""
@@ -25,7 +27,14 @@ def _validate_window(W: int, n: int) -> None:
         raise ValueError("W must not exceed the length of the series")
 
 
-def central_difference(series: Sequence[float], dt: float, W: int) -> np.ndarray:
+def central_difference(
+    series: Sequence[float],
+    dt: float,
+    W: int | None = None,
+    *,
+    settings: Settings | None = None,
+    kappa: float | None = None,
+) -> np.ndarray:
     """Estimate the first derivative using a central difference scheme.
 
     For interior points a symmetric ``\u00b1W//2`` window is used.  For samples
@@ -48,6 +57,14 @@ def central_difference(series: Sequence[float], dt: float, W: int) -> np.ndarray
         Array of derivative estimates matching the length of ``series``.
     """
 
+    if settings is None:
+        settings = Settings()
+
+    if W is None:
+        W = settings.W
+    if kappa is None:
+        kappa = settings.kappa  # currently unused but kept for API symmetry
+
     arr = np.asarray(series, dtype=float)
     n = arr.size
     _validate_window(W, n)
@@ -64,7 +81,14 @@ def central_difference(series: Sequence[float], dt: float, W: int) -> np.ndarray
     return out
 
 
-def local_linear(series: Sequence[float], dt: float, W: int) -> np.ndarray:
+def local_linear(
+    series: Sequence[float],
+    dt: float,
+    W: int | None = None,
+    *,
+    settings: Settings | None = None,
+    kappa: float | None = None,
+) -> np.ndarray:
     """Estimate derivatives via local linear regression.
 
     A first-order polynomial is fit to each window of ``W`` consecutive
@@ -88,6 +112,14 @@ def local_linear(series: Sequence[float], dt: float, W: int) -> np.ndarray:
         Array of derivative estimates matching the length of ``series``.
     """
 
+    if settings is None:
+        settings = Settings()
+
+    if W is None:
+        W = settings.W
+    if kappa is None:
+        kappa = settings.kappa  # unused
+
     arr = np.asarray(series, dtype=float)
     n = arr.size
     _validate_window(W, n)
@@ -107,7 +139,15 @@ def local_linear(series: Sequence[float], dt: float, W: int) -> np.ndarray:
     return out
 
 
-def savgol(series: Sequence[float], dt: float, W: int, polyorder: int = 2) -> np.ndarray:
+def savgol(
+    series: Sequence[float],
+    dt: float,
+    W: int | None = None,
+    *,
+    settings: Settings | None = None,
+    kappa: float | None = None,
+    polyorder: int = 2,
+) -> np.ndarray:
     """Estimate derivatives using a Savitzky\u2013Golay filter.
 
     The filter performs a polynomial least-squares fit over each window and
@@ -132,6 +172,14 @@ def savgol(series: Sequence[float], dt: float, W: int, polyorder: int = 2) -> np
     numpy.ndarray
         Array of derivative estimates matching the length of ``series``.
     """
+
+    if settings is None:
+        settings = Settings()
+
+    if W is None:
+        W = settings.W
+    if kappa is None:
+        kappa = settings.kappa  # unused
 
     arr = np.asarray(series, dtype=float)
     n = arr.size

@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 from datetime import datetime, timezone
 
+from echopress.config import Settings
 from echopress.ingest import OStream, PStreamRecord
 from echopress.core import align_streams
 
@@ -32,3 +33,11 @@ def test_tie_break_behaviour():
     assert left.mapping.tolist() == [0]
     right = align_streams(ostream, pstream, tie_break="later", O_max=10.0, W=0, kappa=1.0)
     assert right.mapping.tolist() == [1]
+
+
+def test_alignment_with_settings():
+    ostream = OStream(session_id="s", timestamps=np.array([0.0, 10.0, 20.0]), channels=np.zeros((0, 0)), meta={})
+    pstream = make_pstream([5.0, 15.0])
+    settings = Settings(tie_break="earlier", O_max=1.0, W=0, kappa=1.0)
+    result = align_streams(ostream, pstream, settings=settings)
+    np.testing.assert_array_equal(result.mapping, [0, 1])
