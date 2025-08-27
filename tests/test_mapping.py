@@ -25,14 +25,6 @@ def test_basic_alignment():
     np.testing.assert_array_equal(result.mapping, [0, 1])
     np.testing.assert_allclose(result.E_align, [0.0, 0.0])
 
-
-def test_O_max_enforcement():
-    ostream = OStream(session_id="s", timestamps=np.array([0.0, 10.0]), channels=np.zeros((0, 0)), meta={})
-    pstream = make_pstream([100.0, 110.0, 120.0])
-    with pytest.raises(ValueError):
-        align_streams(ostream, pstream, tie_breaker="earliest", O_max=10.0, W=3, kappa=1.0)
-
-
 def test_tie_break_behaviour():
     ostream = OStream(session_id="s", timestamps=np.array([0.0, 10.0]), channels=np.zeros((0, 0)), meta={})
     pstream = make_pstream([0.0, 10.0, 20.0])
@@ -56,4 +48,28 @@ def test_derivative_and_uncertainty():
     result = align_streams(ostream, pstream, tie_breaker="earliest", O_max=10.0, W=3, kappa=0.5)
     np.testing.assert_allclose(result.diagnostics["dp_dt"], [1.0, 1.0], atol=1e-6)
     np.testing.assert_allclose(result.diagnostics["delta_p"], [0.5, 0.5], atol=1e-6)
+
+
+def test_over_threshold_rejection():
+    ostream = OStream(session_id="s", timestamps=np.array([0.0, 10.0]), channels=np.zeros((0, 0)), meta={})
+    pstream = make_pstream([100.0, 110.0, 120.0])
+    result = align_streams(ostream, pstream, tie_breaker="earliest", O_max=10.0, W=3, kappa=1.0)
+    assert result.mapping.size == 0
+    assert result.diagnostics["rejected_indices"].tolist() == [0]
+
+
+def test_over_threshold_retained():
+    ostream = OStream(session_id="s", timestamps=np.array([0.0, 10.0]), channels=np.zeros((0, 0)), meta={})
+    pstream = make_pstream([100.0, 110.0, 120.0])
+    result = align_streams(
+        ostream,
+        pstream,
+        tie_breaker="earliest",
+        O_max=10.0,
+        W=3,
+        kappa=1.0,
+        reject_if_Ealign_gt_Omax=False,
+    )
+    assert result.mapping.tolist() == [0]
+    assert result.diagnostics["over_threshold_indices"].tolist() == [0]
 

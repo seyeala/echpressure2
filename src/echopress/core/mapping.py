@@ -44,6 +44,7 @@ def align_streams(
     O_max: float | None = None,
     W: int | None = None,
     kappa: float | None = None,
+    reject_if_Ealign_gt_Omax: bool | None = None,
 ) -> AlignmentResult:
     """Align O-stream sample midpoints to the nearest P-stream timestamps.
 
@@ -73,6 +74,11 @@ def align_streams(
     O_max = settings.O_max if O_max is None else O_max
     W = settings.W if W is None else W
     kappa = settings.kappa if kappa is None else kappa
+    reject_if_Ealign_gt_Omax = (
+        settings.reject_if_Ealign_gt_Omax
+        if reject_if_Ealign_gt_Omax is None
+        else reject_if_Ealign_gt_Omax
+    )
 
     if tie_breaker not in {"earliest", "latest"}:
         raise ValueError("tie_breaker must be 'earliest' or 'latest'")
@@ -91,6 +97,7 @@ def align_streams(
 
     mapping = np.empty(midpoints.shape, dtype=int)
     E_align = np.empty(midpoints.shape, dtype=float)
+    over_thresh: list[int] = []
 
     for i, mp in enumerate(midpoints):
         j = np.searchsorted(p_times, mp, side="left")
@@ -110,9 +117,15 @@ def align_streams(
         mapping[i] = idx
         E_align[i] = abs(mp - p_times[idx])
         if E_align[i] > O_max:
-            raise ValueError(
-                f"Alignment error {E_align[i]:.3f}s exceeds O_max at index {i}"
-            )
+            over_thresh.append(i)
+
+    mask = np.ones(midpoints.shape, dtype=bool)
+    if over_thresh:
+        mask[over_thresh] = False
+    if reject_if_Ealign_gt_Omax:
+        mapping = mapping[mask]
+        E_align = E_align[mask]
+        midpoints = midpoints[mask]
 
     # Derivative of the P-stream pressures
     if pressures.size >= 2:
@@ -138,5 +151,8 @@ def align_streams(
         "dp_dt": dp_dt,
         "delta_p": delta_p,
     }
+    if over_thresh:
+        key = "rejected_indices" if reject_if_Ealign_gt_Omax else "over_threshold_indices"
+        diagnostics[key] = np.array(over_thresh, dtype=int)
     return AlignmentResult(mapping=mapping, E_align=E_align, diagnostics=diagnostics)
 

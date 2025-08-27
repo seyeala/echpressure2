@@ -63,6 +63,12 @@ python -m echopress.cli align
 python -m echopress.cli adapt --adapter cec signal.npy -o features.npy
 ```
 
+During alignment, midpoints whose nearest P-stream timestamp is farther than
+``O_max`` seconds are skipped by default and reported in the returned
+diagnostics. Set the ``reject_if_Ealign_gt_Omax`` flag or environment variable
+``ECHOPRESS_REJECT_IF_EALIGN_GT_OMAX`` to ``false`` to retain these entries
+while still noting their indices in diagnostics.
+
 Existing commands such as `ingest`, `calibrate` and `viz` remain available.
 
 ## Configuration
@@ -78,6 +84,11 @@ including:
 
 By default, the library operates on channel `3`. Override this with
 `calibration.channel` or the `ECHOPRESS_CHANNEL` environment variable.
+
+Alignment rejects midpoints whose nearest P-stream timestamp is beyond
+``O_max`` seconds by default. This behaviour can be toggled with the
+``Settings.reject_if_Ealign_gt_Omax`` field or the environment variable
+``ECHOPRESS_REJECT_IF_EALIGN_GT_OMAX``.
 
 The adapter section uses a nested schema. A minimal configuration looks like:
 

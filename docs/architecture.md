@@ -1,6 +1,6 @@
 # Architecture
 
-Echpressure processes two unsynchronized data streams: a pressure stream (P-stream) providing timestamps and voltage triples, and an oscilloscope stream (O-stream) containing per-file waveforms sampled at a fixed interval. Each O-stream file is assigned a scalar pressure label by aligning its midpoint time to the nearest P-stream timestamp, with uncertainty estimated from the local pressure derivative.
+Echpressure processes two unsynchronized data streams: a pressure stream (P-stream) providing timestamps and voltage triples, and an oscilloscope stream (O-stream) containing per-file waveforms sampled at a fixed interval. Each O-stream file is assigned a scalar pressure label by aligning its midpoint time to the nearest P-stream timestamp, with uncertainty estimated from the local pressure derivative. Midpoints whose alignment error exceeds `O_max` are discarded by default and reported via diagnostics. This behaviour can be disabled by setting `reject_if_Ealign_gt_Omax` to `false`.
 
 ## Pipeline
 1. **Ingestion & Indexing** – Resolve dataset paths, parse file and record metadata, and build in-memory tables for fast lookup.

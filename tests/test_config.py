@@ -6,8 +6,10 @@ from echopress.config import Settings, load_settings
 
 def test_from_env(monkeypatch):
     monkeypatch.setenv("ECHOPRESS_ALPHA", "2.5")
+    monkeypatch.setenv("ECHOPRESS_REJECT_IF_EALIGN_GT_OMAX", "false")
     s = Settings.from_env()
     assert s.alpha == 2.5
+    assert s.reject_if_Ealign_gt_Omax is False
 
 
 def test_load_settings_json(tmp_path):
