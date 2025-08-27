@@ -168,6 +168,7 @@ def adapt(
     pr_min: Optional[float] = typer.Option(None, "--pr-min"),
     pr_max: Optional[float] = typer.Option(None, "--pr-max"),
     n: Optional[int] = typer.Option(None, "--n"),
+    output: Optional[str] = typer.Option(None, "--output", "-o"),
     plot: Optional[bool] = typer.Option(None, "--plot/--no-plot"),
 ) -> Optional[List[np.ndarray]]:
     """Apply adapters to files sampled from the dataset.
@@ -177,8 +178,10 @@ def adapt(
     A random subset of ``n`` files is processed using the adapter selected by
     ``--adapter``.  When ``--plot`` is provided the raw signal and adapter
     outputs are visualised using helper functions from :mod:`viz.plot_adapter`.
-    The processed NumPy arrays are returned to the caller when executed from
-    Python, otherwise a summary is printed.
+    When ``--output`` is supplied the resulting feature vectors are written to
+    a NumPy file at the given path.  The processed NumPy arrays are returned to
+    the caller when executed from Python and ``--output`` is omitted, otherwise
+    a summary is printed.
     """
 
     cfg: DictConfig = ctx.obj
@@ -258,6 +261,12 @@ def adapt(
                 _plot_adapter(data, result_arr)
             except Exception:  # pragma: no cover - graceful fallback
                 typer.echo("Plotting unavailable")
+
+    if output:
+        out_path = Path(output)
+        np.save(out_path, np.stack(outputs))
+        typer.echo(f"saved {len(outputs)} feature arrays to {out_path}")
+        return None
 
     return outputs
 
