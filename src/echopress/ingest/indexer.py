@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional
 
 PSTREAM_EXTENSIONS = {".pstream", ".p", ".ps"}
-OSTREAM_EXTENSIONS = {".ostream", ".o", ".os", ".npz", ".json"}
+OSTREAM_EXTENSIONS = {".ostream", ".o", ".os", ".npz", ".json", ".csv"}
 
 
 def _session_id(path: Path) -> str:
