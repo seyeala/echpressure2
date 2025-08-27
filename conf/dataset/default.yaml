@@ -10,5 +10,6 @@ pstream: ${dataset.root.pstream}/sample_pstream.txt
 # Metadata about P-stream timestamps.
 timezone: UTC
 timestamp_grammar: |
-  ISO-8601, HH:MM:SS[.ffffff], or floating-point seconds since the Unix epoch
+  ISO-8601, HH:MM:SS[.ffffff], floating-point seconds since the Unix epoch,
+  or Mxx-Dxx-Hxx-Mxx-Sxx-U.xxx
 
