@@ -2,6 +2,8 @@
 
 Echpressure processes two unsynchronized data streams: a pressure stream (P-stream) providing timestamps and voltage triples, and an oscilloscope stream (O-stream) containing per-file waveforms sampled at a fixed interval. Each O-stream file is assigned a scalar pressure label by aligning its midpoint time to the nearest P-stream timestamp, with uncertainty estimated from the local pressure derivative.
 
+Alignment enforces a maximum allowable error ``O_max``. If the midpoint lies farther than this threshold from all P-stream timestamps, the file is rejected by default and marked in diagnostics. Setting ``reject_if_Ealign_gt_Omax=False`` retains the mapping but records the offending indices under ``E_align_violations``.
+
 ## Pipeline
 1. **Ingestion & Indexing** – Resolve dataset paths, parse file and record metadata, and build in-memory tables for fast lookup.
 2. **Calibration & Mapping** – Convert voltages to calibrated pressure values and compute midpoint alignment, keeping track of error bounds.
