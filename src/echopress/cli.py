@@ -65,10 +65,15 @@ def adapter(ctx: typer.Context, signal: str, output: str) -> None:
     cfg: DictConfig = ctx.obj
     data = np.load(signal)
     adapter_obj = get_adapter(cfg.adapter.name)
-    cycles = adapter_obj.layer1(data, fs=cfg.adapter.fs, f0=cfg.adapter.f0)
-    outputs = adapter_obj.layer2(cycles, fs=cfg.adapter.fs)
+    fs = cfg.adapter.period_est.fs
+    f0 = cfg.adapter.period_est.f0
+    cycles = adapter_obj.layer1(data, fs=fs, f0=f0)
+    outputs = adapter_obj.layer2(cycles, fs=fs)
     first_key = next(iter(outputs))
-    np.save(output, outputs[first_key])
+    result = outputs[first_key]
+    if cfg.adapter.output_length:
+        result = result[..., : cfg.adapter.output_length]
+    np.save(output, result)
 
 
 @app.command()
