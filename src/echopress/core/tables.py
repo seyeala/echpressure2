@@ -20,10 +20,11 @@ Three logical tables are modelled:
     Provides the mapping between a sample and its corresponding pressure
     label.
 
-Every table uses the composite key ``(sid, file_stamp, idx)`` as a primary
-key.  Convenience functions are provided to export either a consolidated
-"tall" representation of all tables or the normalised individual mapping
-tables.
+``Signals`` and ``OscFiles`` use the composite key ``(sid, file_stamp, idx)``
+as their primary key. ``File2PressureMap`` only requires the file-level key
+``(sid, file_stamp)`` since each file has at most one pressure label.
+Convenience functions are provided to export either a consolidated "tall"
+representation of all tables or the normalised individual mapping tables.
 """
 
 from __future__ import annotations
@@ -32,6 +33,7 @@ from dataclasses import dataclass, asdict
 from typing import Dict, Iterable, Iterator, List, Mapping, MutableMapping, Optional, Tuple
 
 Key = Tuple[str, str, int]
+FileKey = Tuple[str, str]
 
 
 @dataclass
@@ -138,7 +140,6 @@ class File2PressureRow:
 
     sid: str
     file_stamp: str
-    idx: int
     pressure_label: str
 
 
@@ -146,13 +147,30 @@ class File2PressureMap:
     """In-memory table mapping files to pressure labels."""
 
     def __init__(self) -> None:
-        self._rows: Dict[Key, File2PressureRow] = {}
+        self._rows: Dict[FileKey, File2PressureRow] = {}
 
-    def add(self, sid: str, file_stamp: str, idx: int, pressure_label: str) -> None:
-        key = (sid, file_stamp, idx)
+    def add(
+        self,
+        sid: str,
+        file_stamp: str,
+        pressure_label: str,
+        idx: int = 0,
+    ) -> None:
+        """Insert a pressure label mapping.
+
+        Parameters
+        ----------
+        sid, file_stamp, pressure_label:
+            Identify the file and associated label.
+        idx:
+            Deprecated argument kept for backward compatibility; it is
+            ignored because each file has a single pressure label.
+        """
+
+        key = (sid, file_stamp)
         if key in self._rows:
             raise KeyError(f"duplicate primary key: {key}")
-        self._rows[key] = File2PressureRow(sid, file_stamp, idx, pressure_label)
+        self._rows[key] = File2PressureRow(sid, file_stamp, pressure_label)
 
     def to_records(self) -> List[Mapping[str, object]]:
         return [asdict(row) for row in self._rows.values()]
@@ -163,10 +181,10 @@ class File2PressureMap:
     def __len__(self) -> int:  # pragma: no cover - trivial
         return len(self._rows)
 
-    def keys(self) -> Iterable[Key]:
+    def keys(self) -> Iterable[FileKey]:
         return self._rows.keys()
 
-    def get(self, key: Key) -> Optional[File2PressureRow]:  # pragma: no cover - trivial
+    def get(self, key: FileKey) -> Optional[File2PressureRow]:  # pragma: no cover - trivial
         return self._rows.get(key)
 
 
@@ -192,10 +210,14 @@ def export_tables(
         # Merge keys from all tables and produce one consolidated list of
         # records.  Sorting provides deterministic output which simplifies
         # testing and downstream processing.
-        keys = set(signals.keys()) | set(osc_files.keys()) | set(mappings.keys())
+        keys = set(signals.keys()) | set(osc_files.keys())
+        # Include files that only exist in the pressure map with a dummy idx
+        keys |= {(sid, file_stamp, 0) for sid, file_stamp in mappings.keys()}
+
         out: List[MutableMapping[str, object]] = []
         for key in sorted(keys):  # type: ignore[arg-type]
-            row: Dict[str, object] = {"sid": key[0], "file_stamp": key[1], "idx": key[2]}
+            sid, file_stamp, idx = key
+            row: Dict[str, object] = {"sid": sid, "file_stamp": file_stamp, "idx": idx}
             if key in osc_files._rows:
                 row["path"] = osc_files._rows[key].path
             if key in signals._rows:
@@ -208,8 +230,9 @@ def export_tables(
                         "deriv_hi": sig.deriv_hi,
                     }
                 )
-            if key in mappings._rows:
-                row["pressure_label"] = mappings._rows[key].pressure_label
+            map_key = (sid, file_stamp)
+            if map_key in mappings._rows:
+                row["pressure_label"] = mappings._rows[map_key].pressure_label
             out.append(row)
         return out
 
