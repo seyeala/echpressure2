@@ -24,6 +24,11 @@ def _session_id(path: Path) -> str:
     return path.stem
 
 
+def _is_pstream_csv(path: Path) -> bool:
+    """Return ``True`` if ``path`` is a P-stream CSV produced by voltprsr."""
+    return path.suffix.lower() == ".csv" and "voltprsr" in path.stem.lower()
+
+
 @dataclass
 class DatasetIndexer:
     """Index of dataset files on disk."""
@@ -45,8 +50,11 @@ class DatasetIndexer:
         for path in self.root.rglob("*"):
             if not path.is_file():
                 continue
-            suffix = path.suffix.lower()
             sid = _session_id(path)
+            if _is_pstream_csv(path):
+                self.pstreams.setdefault(sid, []).append(path)
+                continue
+            suffix = path.suffix.lower()
             if suffix in PSTREAM_EXTENSIONS:
                 self.pstreams.setdefault(sid, []).append(path)
             elif suffix in OSTREAM_EXTENSIONS:
