@@ -10,8 +10,7 @@ millimetres of mercury (mmHg).
 Three logical tables are modelled:
 
 ``Signals``
-    Individual oscillator samples.  Besides the raw value the table also
-    stores optional alignment errors and derivative bounds.
+    Individual oscillator samples with optional derivative bounds.
 
 ``OscFiles``
     Associates the logical key with the path of the file from which the
@@ -19,7 +18,7 @@ Three logical tables are modelled:
 
 ``File2PressureMap``
     Provides the mapping between a sample and its corresponding pressure
-    value in mmHg.
+    value in mmHg along with the file-level alignment error.
 
 ``Signals`` and ``OscFiles`` use the composite key ``(sid, file_stamp, idx)``
 as their primary key. ``File2PressureMap`` only requires the file-level key
@@ -45,7 +44,6 @@ class SignalRow:
     file_stamp: str
     idx: int
     value: float
-    alignment_error: Optional[float] = None
     deriv_lo: Optional[float] = None
     deriv_hi: Optional[float] = None
 
@@ -62,7 +60,6 @@ class Signals:
         file_stamp: str,
         idx: int,
         value: float,
-        alignment_error: Optional[float] = None,
         deriv_lo: Optional[float] = None,
         deriv_hi: Optional[float] = None,
     ) -> None:
@@ -77,7 +74,7 @@ class Signals:
         key = (sid, file_stamp, idx)
         if key in self._rows:
             raise KeyError(f"duplicate primary key: {key}")
-        self._rows[key] = SignalRow(sid, file_stamp, idx, value, alignment_error, deriv_lo, deriv_hi)
+        self._rows[key] = SignalRow(sid, file_stamp, idx, value, deriv_lo, deriv_hi)
 
     def to_records(self) -> List[Mapping[str, object]]:
         """Return the table contents as a list of dictionaries."""
@@ -142,6 +139,7 @@ class File2PressureRow:
     sid: str
     file_stamp: str
     pressure_value: float
+    alignment_error: Optional[float] = None
 
 
 class File2PressureMap:
@@ -155,6 +153,7 @@ class File2PressureMap:
         sid: str,
         file_stamp: str,
         pressure_value: float,
+        alignment_error: Optional[float] = None,
         idx: int = 0,
     ) -> None:
         """Insert a pressure value mapping.
@@ -163,6 +162,9 @@ class File2PressureMap:
         ----------
         sid, file_stamp, pressure_value:
             Identify the file and associated pressure value in mmHg.
+        alignment_error:
+            Absolute time difference between the O-stream file midpoint and the
+            selected P-stream timestamp.
         idx:
             Deprecated argument kept for backward compatibility; it is
             ignored because each file has a single pressure value.
@@ -171,7 +173,7 @@ class File2PressureMap:
         key = (sid, file_stamp)
         if key in self._rows:
             raise KeyError(f"duplicate primary key: {key}")
-        self._rows[key] = File2PressureRow(sid, file_stamp, pressure_value)
+        self._rows[key] = File2PressureRow(sid, file_stamp, pressure_value, alignment_error)
 
     def to_records(self) -> List[Mapping[str, object]]:
         return [asdict(row) for row in self._rows.values()]
@@ -226,14 +228,15 @@ def export_tables(
                 row.update(
                     {
                         "value": sig.value,
-                        "alignment_error": sig.alignment_error,
                         "deriv_lo": sig.deriv_lo,
                         "deriv_hi": sig.deriv_hi,
                     }
                 )
             map_key = (sid, file_stamp)
             if map_key in mappings._rows:
-                row["pressure_value"] = mappings._rows[map_key].pressure_value
+                fmap_row = mappings._rows[map_key]
+                row["pressure_value"] = fmap_row.pressure_value
+                row["alignment_error"] = fmap_row.alignment_error
             out.append(row)
         return out
 
