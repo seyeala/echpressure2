@@ -29,8 +29,28 @@ def test_basic_alignment():
 def test_O_max_enforcement():
     ostream = OStream(session_id="s", timestamps=np.array([0.0, 10.0]), channels=np.zeros((0, 0)), meta={})
     pstream = make_pstream([100.0, 110.0, 120.0])
-    with pytest.raises(ValueError):
-        align_streams(ostream, pstream, tie_breaker="earliest", O_max=10.0, W=3, kappa=1.0)
+    result = align_streams(
+        ostream,
+        pstream,
+        tie_breaker="earliest",
+        O_max=10.0,
+        W=3,
+        kappa=1.0,
+    )
+    assert result.mapping == -1
+    assert result.diagnostics.get("rejected") is True
+
+    result2 = align_streams(
+        ostream,
+        pstream,
+        tie_breaker="earliest",
+        O_max=10.0,
+        W=3,
+        kappa=1.0,
+        reject_if_Ealign_gt_Omax=False,
+    )
+    assert result2.mapping == 0
+    assert result2.diagnostics.get("E_align_violations") == [0]
 
 
 def test_tie_break_behaviour():

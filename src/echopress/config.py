@@ -30,6 +30,7 @@ class Settings:
     tie_breaker: str = "earliest"
     W: int = 5
     kappa: float = 1.0
+    reject_if_Ealign_gt_Omax: bool = True
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -43,6 +44,10 @@ class Settings:
             "tie_breaker": ("ECHOPRESS_TIE_BREAKER", str),
             "W": ("ECHOPRESS_W", int),
             "kappa": ("ECHOPRESS_KAPPA", float),
+            "reject_if_Ealign_gt_Omax": (
+                "ECHOPRESS_REJECT_IF_EALIGN_GT_OMAX",
+                lambda v: v.lower() in {"1", "true", "yes"},
+            ),
         }
         data: Dict[str, Any] = {}
         for field, (env, conv) in mapping.items():

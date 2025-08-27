@@ -43,6 +43,7 @@ def align_streams(
     O_max: float | None = None,
     W: int | None = None,
     kappa: float | None = None,
+    reject_if_Ealign_gt_Omax: bool | None = None,
 ) -> AlignmentResult:
     """Align the O-stream file midpoint to the nearest P-stream timestamp.
 
@@ -72,6 +73,11 @@ def align_streams(
     O_max = settings.O_max if O_max is None else O_max
     W = settings.W if W is None else W
     kappa = settings.kappa if kappa is None else kappa
+    reject_if_Ealign_gt_Omax = (
+        settings.reject_if_Ealign_gt_Omax
+        if reject_if_Ealign_gt_Omax is None
+        else reject_if_Ealign_gt_Omax
+    )
 
     if tie_breaker not in {"earliest", "latest"}:
         raise ValueError("tie_breaker must be 'earliest' or 'latest'")
@@ -103,10 +109,21 @@ def align_streams(
         else:
             mapping = j - 1 if tie_breaker == "earliest" else j
     E_align = abs(midpoint - p_times[mapping])
+
+    diagnostics: Dict[str, Any] = {
+        "tie_breaker": tie_breaker,
+        "O_max": O_max,
+        "W": W,
+        "kappa": kappa,
+        "midpoint": midpoint,
+    }
+
+    violations = []
     if E_align > O_max:
-        raise ValueError(
-            f"Alignment error {E_align:.3f}s exceeds O_max"
-        )
+        violations.append(0)
+        if reject_if_Ealign_gt_Omax:
+            diagnostics["rejected"] = True
+            return AlignmentResult(mapping=-1, E_align=E_align, diagnostics=diagnostics)
 
     # Derivative of the P-stream pressures
     if pressures.size >= 2:
@@ -123,14 +140,11 @@ def align_streams(
     dp_dt = float(dp_dt_full[mapping])
     delta_p = pressure_uncertainty(dp_dt, E_align, kappa)
 
-    diagnostics = {
-        "tie_breaker": tie_breaker,
-        "O_max": O_max,
-        "W": W,
-        "kappa": kappa,
-        "midpoint": midpoint,
+    diagnostics.update({
         "dp_dt": dp_dt,
         "delta_p": delta_p,
-    }
+    })
+    if violations:
+        diagnostics["E_align_violations"] = violations
     return AlignmentResult(mapping=mapping, E_align=E_align, diagnostics=diagnostics)
 
