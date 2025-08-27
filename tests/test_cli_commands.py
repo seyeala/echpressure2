@@ -62,6 +62,14 @@ def test_index_align_adapt(tmp_path):
     data = json.loads(align_path.read_text())
     assert any("pressure_value" in row for row in data)
 
-    result = runner.invoke(app, ["adapt", "--adapter", "cec", "--n", "1"], obj=cfg)
+    out_path = tmp_path / "features.npy"
+    result = runner.invoke(
+        app,
+        ["adapt", "--adapter", "cec", "--n", "1", "--output", str(out_path)],
+        obj=cfg,
+    )
     assert result.exit_code == 0
     assert "adapter=cec" in result.stdout
+    assert out_path.exists()
+    data = np.load(out_path)
+    assert data.shape[0] == 1

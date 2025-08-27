@@ -60,8 +60,8 @@ python -m echopress.cli index
 # Align O-stream files to the P-stream and compute uncertainty bounds
 python -m echopress.cli align
 
-# Run an adapter and save features
-python -m echopress.cli adapt --adapter cec signal.npy -o features.npy
+# Run an adapter on files within a pressure range and save features
+python -m echopress.cli adapt --adapter cec --pr-min 80 --pr-max 120 --n 5 --output features.npy
 ```
 
 Existing commands such as `ingest`, `calibrate` and `viz` remain available.
