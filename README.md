@@ -10,7 +10,8 @@ formalised in `theory.pdf`.
 
 `echpressure2` ingests two unsynchronised data streams:
 
-- **P-stream** – timestamped pressure measurements.
+- **P-stream** – timestamped pressure measurements expressed in millimetres of
+  mercury (mmHg).
 - **O-stream** – oscilloscope files containing uniformly sampled waveforms.
 
 Each O-stream file is mapped to the nearest P-stream timestamp, calibrated and
