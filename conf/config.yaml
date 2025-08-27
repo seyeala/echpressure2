@@ -1,0 +1,8 @@
+# Default Hydra configuration for echopress CLI
+
+defaults:
+  - dataset: default
+  - mapping: default
+  - calibration: default
+  - adapter: default
+  - viz: default

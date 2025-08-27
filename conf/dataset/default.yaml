@@ -1,0 +1,7 @@
+# Dataset configuration
+path: data/raw.csv
+# Column containing target variable
+target: target
+# Optional output locations
+csv: data/dataset.csv
+npz: data/dataset.npz
