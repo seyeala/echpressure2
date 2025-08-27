@@ -35,7 +35,8 @@ def test_mismatched_coefficient_lengths():
 
 def test_apply_calibration_with_settings():
     voltage = np.array([0.0, 1.0])
-    settings = Settings(alpha=2.0, beta=1.0, channel=0)
+    settings = Settings(alpha=2.0, beta=1.0)
+    assert settings.channel == 3
     result = apply_calibration(voltage, settings=settings)
     np.testing.assert_allclose(result, 2.0 * voltage + 1.0)
 
