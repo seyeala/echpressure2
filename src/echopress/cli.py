@@ -1,34 +1,29 @@
 from __future__ import annotations
 
-"""Command line interface for echopress built with Typer and Hydra."""
+"""Command line interface for echopress using Typer and Hydra."""
 
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
+import hydra
 import numpy as np
 import typer
-from hydra import initialize, compose
+from omegaconf import DictConfig
 
-from .ingest import load_ostream, read_pstream
-from .core.calibration import apply_calibration
 from .adapters import get_adapter
+from .core.calibration import apply_calibration
 from .config import Settings
+from .ingest import load_ostream, read_pstream
+
 
 app = typer.Typer(help="Utilities for the echopress project")
 
 
-def _load_cfg(overrides: List[str] | None = None):
-    """Load Hydra configuration composed from ``conf/``."""
-    config_dir = Path(__file__).resolve().parent.parent.parent / "conf"
-    with initialize(config_path=str(config_dir), version_base=None):
-        cfg = compose(config_name="config", overrides=overrides or [])
-    return cfg
-
-
 @app.command()
-def ingest(overrides: List[str] = typer.Option(None, help="Hydra overrides")) -> None:
+def ingest(ctx: typer.Context) -> None:
     """Load O- and P-streams as specified by the dataset config."""
-    cfg = _load_cfg(overrides)
+
+    cfg: DictConfig = ctx.obj
     ostream = load_ostream(cfg.dataset.ostream)
     pstream = list(read_pstream(cfg.dataset.pstream))
     typer.echo(
@@ -38,13 +33,16 @@ def ingest(overrides: List[str] = typer.Option(None, help="Hydra overrides")) ->
 
 @app.command()
 def calibrate(
+    ctx: typer.Context,
     input: str,
     output: Optional[str] = typer.Option(None, "--output", "-o"),
-    overrides: List[str] = typer.Option(None, help="Hydra overrides"),
 ) -> None:
     """Apply calibration coefficients to a numeric array."""
-    cfg = _load_cfg(overrides)
-    data = np.loadtxt(input, delimiter=",") if input.endswith(".csv") else np.load(input)
+
+    cfg: DictConfig = ctx.obj
+    data = np.loadtxt(input, delimiter=",") if input.endswith(".csv") else np.load(
+        input
+    )
     settings = Settings(
         alpha=cfg.calibration.alpha,
         beta=cfg.calibration.beta,
@@ -61,13 +59,10 @@ def calibrate(
 
 
 @app.command()
-def adapter(
-    signal: str,
-    output: str,
-    overrides: List[str] = typer.Option(None, help="Hydra overrides"),
-) -> None:
+def adapter(ctx: typer.Context, signal: str, output: str) -> None:
     """Run an adapter on ``signal`` and save its first output array."""
-    cfg = _load_cfg(overrides)
+
+    cfg: DictConfig = ctx.obj
     data = np.load(signal)
     adapter_obj = get_adapter(cfg.adapter.name)
     cycles = adapter_obj.layer1(data, fs=cfg.adapter.fs, f0=cfg.adapter.f0)
@@ -77,9 +72,10 @@ def adapter(
 
 
 @app.command()
-def viz(signal: str, overrides: List[str] = typer.Option(None, help="Hydra overrides")) -> None:
+def viz(ctx: typer.Context, signal: str) -> None:
     """Visualise ``signal`` using matplotlib if available."""
-    cfg = _load_cfg(overrides)
+
+    cfg: DictConfig = ctx.obj
     data = np.load(signal)
     try:  # pragma: no cover - optional dependency
         import matplotlib.pyplot as plt
@@ -98,5 +94,16 @@ def viz(signal: str, overrides: List[str] = typer.Option(None, help="Hydra overr
         typer.echo(f"mean={float(np.mean(data)):.3f} std={float(np.std(data)):.3f}")
 
 
+CONFIG_DIR = Path(__file__).resolve().parent.parent.parent / "conf"
+
+
+@hydra.main(config_path=str(CONFIG_DIR), config_name="config", version_base=None)
+def main(cfg: DictConfig) -> None:
+    """Entrypoint executed by Hydra which dispatches to the Typer app."""
+
+    app(obj=cfg)
+
+
 if __name__ == "__main__":
-    app()
+    main()
+
