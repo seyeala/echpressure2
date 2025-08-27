@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 from typing import Iterator, Union, TextIO, Sequence
+import csv
 import pathlib
 import re
 
@@ -160,11 +161,28 @@ def read_pstream(
         beta = settings.calibration.beta
 
     if isinstance(path, (str, pathlib.Path)):
-        with open(path, "r", encoding="utf8") as fh:
-            for line in fh:
-                record = _parse_line(line, alpha, beta, settings)
-                if record is not None:
-                    yield record
+        p = pathlib.Path(path)
+        if p.suffix.lower() == ".csv":
+            tz = ZoneInfo(settings.timestamp.timezone)
+            with open(p, newline="", encoding="utf8") as fh:
+                reader = csv.DictReader(fh)
+                for row in reader:
+                    ts_val = row.get("timestamp")
+                    p_val = row.get("pressure")
+                    if ts_val is None or p_val is None:
+                        continue
+                    try:
+                        timestamp = parse_timestamp(str(ts_val), settings=settings)
+                    except ValueError:
+                        timestamp = datetime.fromtimestamp(float(ts_val), tz=tz)
+                    pressure = float(p_val)
+                    yield PStreamRecord(timestamp, (0.0, 0.0, 0.0), pressure)
+        else:
+            with open(p, "r", encoding="utf8") as fh:
+                for line in fh:
+                    record = _parse_line(line, alpha, beta, settings)
+                    if record is not None:
+                        yield record
     else:
         for line in path:
             record = _parse_line(line, alpha, beta, settings)
