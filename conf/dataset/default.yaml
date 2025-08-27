@@ -1,0 +1,3 @@
+# Paths to input streams; these are placeholders that may be overridden.
+ostream: sample_ostream.npz
+pstream: sample_pstream.txt
