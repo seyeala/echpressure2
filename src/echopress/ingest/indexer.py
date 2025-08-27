@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional
 
+from ..config import Settings
+
 PSTREAM_EXTENSIONS = {".pstream", ".p", ".ps"}
 OSTREAM_EXTENSIONS = {".ostream", ".o", ".os", ".npz", ".json", ".csv"}
 
@@ -24,9 +26,12 @@ def _session_id(path: Path) -> str:
     return path.stem
 
 
-def _is_pstream_csv(path: Path) -> bool:
-    """Return ``True`` if ``path`` is a P-stream CSV produced by voltprsr."""
-    return path.suffix.lower() == ".csv" and "voltprsr" in path.stem.lower()
+def _is_pstream_csv(path: Path, patterns: Iterable[str]) -> bool:
+    """Return ``True`` if ``path`` matches a configured P-stream CSV pattern."""
+    if path.suffix.lower() != ".csv":
+        return False
+    stem = path.stem.lower()
+    return any(p.lower() in stem for p in patterns)
 
 
 @dataclass
@@ -36,6 +41,7 @@ class DatasetIndexer:
     root: Path
     pstreams: Dict[str, List[Path]] = field(default_factory=dict)
     ostreams: Dict[str, List[Path]] = field(default_factory=dict)
+    settings: Settings = field(default_factory=Settings)
 
     def __post_init__(self) -> None:
         self.root = Path(self.root)
@@ -51,7 +57,7 @@ class DatasetIndexer:
             if not path.is_file():
                 continue
             sid = _session_id(path)
-            if _is_pstream_csv(path):
+            if _is_pstream_csv(path, self.settings.pstream_csv_patterns):
                 self.pstreams.setdefault(sid, []).append(path)
                 continue
             suffix = path.suffix.lower()
