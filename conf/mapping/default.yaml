@@ -1,0 +1,4 @@
+tie_break: earlier
+O_max: 0.1
+W: 5
+kappa: 1.0
