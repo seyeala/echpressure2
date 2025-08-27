@@ -1,20 +1,29 @@
-"""In-memory tables for oscillator signals and pressure mapping.
+"""Simple in-memory tables used by the project.
 
-This module provides simple container classes for working with oscillator
-signal data.  Three logical tables are represented:
+The real project persists information about oscillator signals and their
+relationship to pressure measurements in a database.  For the exercises in
+this kata we only need a *very* small subset of that functionality, therefore
+the tables are materialised completely in memory using Python data
+structures.
+
+Three logical tables are modelled:
 
 ``Signals``
-    Individual signal samples and associated metadata including alignment
-    errors and derivative bounds.
-``OscFiles``
-    Mapping from oscillator data files to the logical key.
-``File2PressureMap``
-    Mapping between file/sample identifiers and pressure labels.
+    Individual oscillator samples.  Besides the raw value the table also
+    stores optional alignment errors and derivative bounds.
 
-The tables are stored entirely in memory using dictionaries keyed by the
-composite primary key ``(sid, file_stamp, idx)``.  Each table exposes a
-minimal API for inserting rows and exporting the stored data either in a
-"tall" consolidated form or as individual mapping tables.
+``OscFiles``
+    Associates the logical key with the path of the file from which the
+    sample was obtained.
+
+``File2PressureMap``
+    Provides the mapping between a sample and its corresponding pressure
+    label.
+
+Every table uses the composite key ``(sid, file_stamp, idx)`` as a primary
+key.  Convenience functions are provided to export either a consolidated
+"tall" representation of all tables or the normalised individual mapping
+tables.
 """
 
 from __future__ import annotations
@@ -75,8 +84,14 @@ class Signals:
     def __iter__(self) -> Iterator[SignalRow]:
         return iter(self._rows.values())
 
+    def __len__(self) -> int:  # pragma: no cover - trivial
+        return len(self._rows)
+
     def keys(self) -> Iterable[Key]:
         return self._rows.keys()
+
+    def get(self, key: Key) -> Optional[SignalRow]:  # pragma: no cover - trivial
+        return self._rows.get(key)
 
 
 @dataclass
@@ -107,8 +122,14 @@ class OscFiles:
     def __iter__(self) -> Iterator[OscFileRow]:
         return iter(self._rows.values())
 
+    def __len__(self) -> int:  # pragma: no cover - trivial
+        return len(self._rows)
+
     def keys(self) -> Iterable[Key]:
         return self._rows.keys()
+
+    def get(self, key: Key) -> Optional[OscFileRow]:  # pragma: no cover - trivial
+        return self._rows.get(key)
 
 
 @dataclass
@@ -139,8 +160,14 @@ class File2PressureMap:
     def __iter__(self) -> Iterator[File2PressureRow]:
         return iter(self._rows.values())
 
+    def __len__(self) -> int:  # pragma: no cover - trivial
+        return len(self._rows)
+
     def keys(self) -> Iterable[Key]:
         return self._rows.keys()
+
+    def get(self, key: Key) -> Optional[File2PressureRow]:  # pragma: no cover - trivial
+        return self._rows.get(key)
 
 
 def export_tables(
@@ -162,12 +189,15 @@ def export_tables(
     """
 
     if tall:
+        # Merge keys from all tables and produce one consolidated list of
+        # records.  Sorting provides deterministic output which simplifies
+        # testing and downstream processing.
         keys = set(signals.keys()) | set(osc_files.keys()) | set(mappings.keys())
         out: List[MutableMapping[str, object]] = []
-        for key in keys:
+        for key in sorted(keys):  # type: ignore[arg-type]
             row: Dict[str, object] = {"sid": key[0], "file_stamp": key[1], "idx": key[2]}
             if key in osc_files._rows:
-                row.update({"path": osc_files._rows[key].path})
+                row["path"] = osc_files._rows[key].path
             if key in signals._rows:
                 sig = signals._rows[key]
                 row.update(
@@ -179,7 +209,7 @@ def export_tables(
                     }
                 )
             if key in mappings._rows:
-                row.update({"pressure_label": mappings._rows[key].pressure_label})
+                row["pressure_label"] = mappings._rows[key].pressure_label
             out.append(row)
         return out
 
@@ -188,3 +218,15 @@ def export_tables(
         "osc_files": osc_files.to_records(),
         "file2pressure": mappings.to_records(),
     }
+
+
+__all__ = [
+    "SignalRow",
+    "Signals",
+    "OscFileRow",
+    "OscFiles",
+    "File2PressureRow",
+    "File2PressureMap",
+    "export_tables",
+]
+
