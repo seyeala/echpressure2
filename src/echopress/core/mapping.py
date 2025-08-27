@@ -15,23 +15,22 @@ from .uncertainty import pressure_uncertainty
 
 @dataclass
 class AlignmentResult:
-    """Result of aligning O- and P-streams.
+    """Result of aligning O- and P-streams at the file level.
 
     Attributes
     ----------
     mapping:
-        Array mapping each O-stream midpoint to the index of the nearest
-        P-stream record.
+        Index of the P-stream record nearest to the file midpoint.
     E_align:
-        Array of absolute time differences between each midpoint and the
-        selected P-stream timestamp.
+        Absolute time difference between the midpoint and the selected
+        P-stream timestamp.
     diagnostics:
         Free-form dictionary containing any auxiliary information generated
         during the alignment process.
     """
 
-    mapping: np.ndarray
-    E_align: np.ndarray
+    mapping: int
+    E_align: float
     diagnostics: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -45,7 +44,7 @@ def align_streams(
     W: int | None = None,
     kappa: float | None = None,
 ) -> AlignmentResult:
-    """Align O-stream sample midpoints to the nearest P-stream timestamps.
+    """Align the O-stream file midpoint to the nearest P-stream timestamp.
 
     Parameters
     ----------
@@ -63,8 +62,8 @@ def align_streams(
     Returns
     -------
     AlignmentResult
-        Dataclass containing the index mapping, the per-midpoint alignment
-        error array and any diagnostics.
+        Dataclass containing the index mapping, the alignment error and any
+        diagnostics.
     """
     if settings is None:
         settings = Settings()
@@ -81,7 +80,7 @@ def align_streams(
     if o_times.ndim != 1 or o_times.size < 2:
         raise ValueError("ostream must contain at least two timestamps")
 
-    midpoints = (o_times[:-1] + o_times[1:]) / 2.0
+    midpoint = 0.5 * (o_times[0] + o_times[-1])
 
     p_times = np.array([rec.timestamp.timestamp() for rec in pstream], dtype=float)
     if p_times.size == 0:
@@ -89,30 +88,25 @@ def align_streams(
 
     pressures = np.array([rec.pressure for rec in pstream], dtype=float)
 
-    mapping = np.empty(midpoints.shape, dtype=int)
-    E_align = np.empty(midpoints.shape, dtype=float)
-
-    for i, mp in enumerate(midpoints):
-        j = np.searchsorted(p_times, mp, side="left")
-        if j == 0:
-            idx = 0
-        elif j == len(p_times):
-            idx = len(p_times) - 1
+    j = np.searchsorted(p_times, midpoint, side="left")
+    if j == 0:
+        mapping = 0
+    elif j == len(p_times):
+        mapping = len(p_times) - 1
+    else:
+        prev_diff = abs(midpoint - p_times[j - 1])
+        next_diff = abs(p_times[j] - midpoint)
+        if prev_diff < next_diff:
+            mapping = j - 1
+        elif prev_diff > next_diff:
+            mapping = j
         else:
-            prev_diff = abs(mp - p_times[j - 1])
-            next_diff = abs(p_times[j] - mp)
-            if prev_diff < next_diff:
-                idx = j - 1
-            elif prev_diff > next_diff:
-                idx = j
-            else:
-                idx = j - 1 if tie_breaker == "earliest" else j
-        mapping[i] = idx
-        E_align[i] = abs(mp - p_times[idx])
-        if E_align[i] > O_max:
-            raise ValueError(
-                f"Alignment error {E_align[i]:.3f}s exceeds O_max at index {i}"
-            )
+            mapping = j - 1 if tie_breaker == "earliest" else j
+    E_align = abs(midpoint - p_times[mapping])
+    if E_align > O_max:
+        raise ValueError(
+            f"Alignment error {E_align:.3f}s exceeds O_max"
+        )
 
     # Derivative of the P-stream pressures
     if pressures.size >= 2:
@@ -126,7 +120,7 @@ def align_streams(
         dp_dt_full = np.gradient(pressures, p_times, edge_order=1)
     else:
         dp_dt_full = central_difference(pressures, dt, W=W_eff)
-    dp_dt = dp_dt_full[mapping]
+    dp_dt = float(dp_dt_full[mapping])
     delta_p = pressure_uncertainty(dp_dt, E_align, kappa)
 
     diagnostics = {
@@ -134,7 +128,7 @@ def align_streams(
         "O_max": O_max,
         "W": W,
         "kappa": kappa,
-        "midpoints": midpoints,
+        "midpoint": midpoint,
         "dp_dt": dp_dt,
         "delta_p": delta_p,
     }
