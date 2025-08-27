@@ -11,4 +11,4 @@ def test_read_pstream_csv(tmp_path):
     assert len(records) == 2
     assert records[0].pressure == 1.0
     assert records[0].timestamp == datetime.fromtimestamp(0.0, tz=timezone.utc)
-    assert records[0].voltages == (0.0, 0.0, 0.0)
+    assert records[0].voltages is None
