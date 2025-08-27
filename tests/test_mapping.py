@@ -53,7 +53,19 @@ def test_alignment_with_settings():
 def test_derivative_and_uncertainty():
     ostream = OStream(session_id="s", timestamps=np.array([0.0, 10.0, 20.0]), channels=np.zeros((0, 0)), meta={})
     pstream = make_pstream([6.0, 16.0, 26.0])
-    result = align_streams(ostream, pstream, tie_breaker="earliest", O_max=10.0, W=3, kappa=0.5)
+    result = align_streams(
+        ostream,
+        pstream,
+        tie_breaker="earliest",
+        O_max=10.0,
+        W=3,
+        method="local_linear",
+        kappa=0.5,
+    )
     np.testing.assert_allclose(result.diagnostics["dp_dt"], [1.0, 1.0], atol=1e-6)
-    np.testing.assert_allclose(result.diagnostics["delta_p"], [0.5, 0.5], atol=1e-6)
+    np.testing.assert_allclose(result.diagnostics["uncertainty"], [0.5, 0.5], atol=1e-6)
+    np.testing.assert_allclose(result.P_bounds[0], [-0.5, -0.5], atol=1e-6)
+    np.testing.assert_allclose(result.P_bounds[1], [0.5, 0.5], atol=1e-6)
+    assert result.diagnostics["derivative_method"] == "local_linear"
+    assert result.diagnostics["window_size"] == 3
 

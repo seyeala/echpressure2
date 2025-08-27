@@ -9,7 +9,13 @@ import numpy as np
 
 from ..ingest import OStream, PStreamRecord
 from ..config import Settings
-from core import central_difference, pressure_uncertainty
+from core import (
+    central_difference,
+    local_linear,
+    savgol,
+    pressure_uncertainty,
+    bound_pressure,
+)
 
 
 @dataclass
@@ -24,6 +30,9 @@ class AlignmentResult:
     E_align:
         Array of absolute time differences between each midpoint and the
         selected P-stream timestamp.
+    P_bounds:
+        Tuple ``(-ΔP, +ΔP)`` giving pressure uncertainty bounds for each
+        aligned midpoint.
     diagnostics:
         Free-form dictionary containing any auxiliary information generated
         during the alignment process.
@@ -31,6 +40,7 @@ class AlignmentResult:
 
     mapping: np.ndarray
     E_align: np.ndarray
+    P_bounds: tuple[np.ndarray, np.ndarray] | None = None
     diagnostics: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -42,6 +52,7 @@ def align_streams(
     tie_breaker: str | None = None,
     O_max: float | None = None,
     W: int | None = None,
+    method: str | None = None,
     kappa: float | None = None,
 ) -> AlignmentResult:
     """Align O-stream sample midpoints to the nearest P-stream timestamps.
@@ -55,7 +66,7 @@ def align_streams(
     settings:
         Optional :class:`~echopress.config.Settings` instance providing default
         values for the remaining parameters.
-    tie_breaker, O_max, W, kappa:
+    tie_breaker, O_max, W, method, kappa:
         Individual overrides for the respective parameters.  Any value set here
         takes precedence over those supplied in ``settings``.
 
@@ -71,6 +82,7 @@ def align_streams(
     tie_breaker = tie_breaker or settings.tie_breaker
     O_max = settings.O_max if O_max is None else O_max
     W = settings.W if W is None else W
+    method = method or settings.derivative_method
     kappa = settings.kappa if kappa is None else kappa
 
     if tie_breaker not in {"earliest", "latest"}:
@@ -123,19 +135,37 @@ def align_streams(
         W_eff = pressures.size - (1 - pressures.size % 2)
     if W_eff < 3:
         dp_dt_full = np.gradient(pressures, p_times, edge_order=1)
+        method_used = "gradient"
     else:
-        dp_dt_full = central_difference(pressures, dt, W=W_eff)
+        methods = {
+            "central_difference": central_difference,
+            "local_linear": local_linear,
+            "savgol": savgol,
+        }
+        if method not in methods:
+            raise ValueError(f"unknown derivative method: {method}")
+        dp_dt_full = methods[method](pressures, dt, W_eff)
+        method_used = method
     dp_dt = dp_dt_full[mapping]
     delta_p = pressure_uncertainty(dp_dt, E_align, kappa)
+    bounds = bound_pressure(dp_dt, E_align, kappa)
 
     diagnostics = {
         "tie_breaker": tie_breaker,
         "O_max": O_max,
-        "W": W,
+        "derivative_method": method_used,
+        "window_size": W_eff,
         "kappa": kappa,
         "midpoints": midpoints,
         "dp_dt": dp_dt,
+        "uncertainty": delta_p,
         "delta_p": delta_p,
+        "bounds": bounds,
     }
-    return AlignmentResult(mapping=mapping, E_align=E_align, diagnostics=diagnostics)
+    return AlignmentResult(
+        mapping=mapping,
+        E_align=E_align,
+        P_bounds=bounds,
+        diagnostics=diagnostics,
+    )
 
