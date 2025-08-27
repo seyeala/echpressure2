@@ -1,0 +1,14 @@
+site_name: Echpressure
+nav:
+  - Architecture: architecture.md
+  - Adapters:
+      - CEC: adapters/cec.md
+      - DTW-TA: adapters/dtw_ta.md
+      - FTS: adapters/fts.md
+      - HMV: adapters/hmv.md
+      - HTE: adapters/hte.md
+      - MFCC: adapters/mfcc.md
+      - MTP: adapters/mtp.md
+      - PB-CSA: adapters/pb_csa.md
+      - PLSTN: adapters/plstn.md
+      - WCV: adapters/wcv.md

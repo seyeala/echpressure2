@@ -6,6 +6,9 @@ build-backend = "setuptools.build_meta"
 name = "echpressure2"
 version = "0.0.0"
 
+[project.optional-dependencies]
+docs = ["mkdocs"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
