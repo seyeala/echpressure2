@@ -21,6 +21,16 @@ def load_array(path: str | Path) -> np.ndarray:
     return np.loadtxt(p, delimiter=",")
 
 
+def auto_label(path: str | Path) -> str:
+    """Return a concise label derived from ``path``.
+
+    This helper is handy for the CLI entry points where a user often wants to
+    plot a file quickly without manually specifying a label.  The file stem is
+    generally descriptive enough and keeps the scripts terse.
+    """
+    return Path(path).stem
+
+
 def plot_series(ax: plt.Axes, series: Sequence[float], label: str | None = None, **kwargs) -> None:
     """Plot a 1D series on ``ax`` with an optional label."""
     ax.plot(series, label=label, **kwargs)

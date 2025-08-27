@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import argparse
+
 import matplotlib.pyplot as plt
 
-from .helpers import load_array, plot_series, save_or_show
+from .helpers import auto_label, load_array, plot_series, save_or_show
 from .styles import apply_style
 
 
@@ -23,7 +24,11 @@ def main() -> None:
     apply_style()
     fig, ax = plt.subplots()
 
-    labels = args.labels or [None] * len(args.signals)
+    if args.labels:
+        labels = args.labels
+    else:
+        labels = [auto_label(p) for p in args.signals]
+
     for path, label in zip(args.signals, labels):
         data = load_array(path)
         plot_series(ax, data, label=label)

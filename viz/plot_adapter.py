@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import argparse
+
 import matplotlib.pyplot as plt
 
-from .helpers import load_array, plot_series, save_or_show
+from .helpers import auto_label, load_array, plot_series, save_or_show
 from .styles import apply_style
 
 
@@ -13,6 +14,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Visualise adapter outputs")
     parser.add_argument("--input", required=True, help="Path to the input signal")
     parser.add_argument("--output", required=True, help="Path to the adapter output signal")
+    parser.add_argument("--input-label", help="Label for the input signal")
+    parser.add_argument("--output-label", help="Label for the adapter output signal")
     parser.add_argument("--save", help="Path to save the figure")
     parser.add_argument("--show", action="store_true", help="Display the figure interactively")
     args = parser.parse_args()
@@ -28,10 +31,13 @@ def main() -> None:
     apply_style()
     fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
 
-    plot_series(ax1, inp, label="input")
-    plot_series(ax1, out, label="adapter output")
+    inp_label = args.input_label or auto_label(args.input)
+    out_label = args.output_label or auto_label(args.output)
+
+    plot_series(ax1, inp, label=inp_label)
+    plot_series(ax1, out, label=out_label)
     ax1.set_ylabel("Amplitude")
-    ax1.set_title("Input vs adapter output")
+    ax1.set_title(f"{inp_label} vs {out_label}")
 
     plot_series(ax2, diff, label="difference")
     ax2.set_xlabel("Sample")
