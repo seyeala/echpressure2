@@ -16,6 +16,7 @@ def make_cfg(tmp_path):
     )
     p_path = tmp_path / "s1.pstream"
     p_path.write_text("\n".join(["0 0 0 10", "1 0 0 11", "2 0 0 12"]))
+    align_path = tmp_path / "align.json"
     cfg = OmegaConf.create(
         {
             "dataset": {
@@ -33,15 +34,21 @@ def make_cfg(tmp_path):
                 "name": "cec",
                 "output_length": 0,
                 "period_est": {"fs": 1.0, "f0": 1.0},
+                "align_table": str(align_path),
+                "pr_min": None,
+                "pr_max": None,
+                "n": 1,
+                "plot": False,
+                "seed": 0,
             },
             "viz": {},
         }
     )
-    return cfg, o_path, p_path
+    return cfg, o_path, p_path, align_path
 
 
 def test_index_align_adapt(tmp_path):
-    cfg, o_path, p_path = make_cfg(tmp_path)
+    cfg, o_path, p_path, align_path = make_cfg(tmp_path)
     runner = CliRunner()
 
     cache_path = tmp_path / "index.json"
@@ -50,9 +57,10 @@ def test_index_align_adapt(tmp_path):
     data = json.loads(cache_path.read_text())
     assert "s1" in data["ostreams"]
 
-    result = runner.invoke(app, ["align"], obj=cfg)
-    assert "E_align" in result.stdout
-    assert "ΔP" in result.stdout
+    result = runner.invoke(app, ["align", "--export", str(align_path)], obj=cfg)
+    assert result.exit_code == 0
+    data = json.loads(align_path.read_text())
+    assert any("pressure_value" in row for row in data)
 
     result = runner.invoke(app, ["adapt", "--adapter", "cec", "--n", "1"], obj=cfg)
     assert result.exit_code == 0

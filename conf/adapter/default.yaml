@@ -3,3 +3,9 @@ output_length: 0
 period_est:
   fs: 1.0
   f0: 1.0
+pr_min: null
+pr_max: null
+n: 1
+plot: false
+align_table: ${dataset.root.ostream}/align.json
+seed: 0
