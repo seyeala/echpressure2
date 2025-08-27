@@ -1,3 +1,5 @@
 """Top-level package for echopress."""
 
-__all__ = ["ingest"]
+from . import ingest, core
+
+__all__ = ["ingest", "core"]
