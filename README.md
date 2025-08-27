@@ -32,7 +32,7 @@ The codebase is organised into focused modules:
 ```
 conf/       Hydra configuration groups
 src/        library code under `echopress`
-viz/        plotting helpers
+src/echopress/viz/  plotting helpers
 tests/      unit tests
 plan.pdf    project roadmap
 theory.pdf  dataset theory
