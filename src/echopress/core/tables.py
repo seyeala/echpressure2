@@ -4,7 +4,8 @@ The real project persists information about oscillator signals and their
 relationship to pressure measurements in a database.  For the exercises in
 this kata we only need a *very* small subset of that functionality, therefore
 the tables are materialised completely in memory using Python data
-structures.
+structures.  Pressure values are represented as floats measured in
+millimetres of mercury (mmHg).
 
 Three logical tables are modelled:
 
@@ -18,11 +19,11 @@ Three logical tables are modelled:
 
 ``File2PressureMap``
     Provides the mapping between a sample and its corresponding pressure
-    label.
+    value in mmHg.
 
 ``Signals`` and ``OscFiles`` use the composite key ``(sid, file_stamp, idx)``
 as their primary key. ``File2PressureMap`` only requires the file-level key
-``(sid, file_stamp)`` since each file has at most one pressure label.
+``(sid, file_stamp)`` since each file has at most one pressure value.
 Convenience functions are provided to export either a consolidated "tall"
 representation of all tables or the normalised individual mapping tables.
 """
@@ -140,11 +141,11 @@ class File2PressureRow:
 
     sid: str
     file_stamp: str
-    pressure_label: str
+    pressure_value: float
 
 
 class File2PressureMap:
-    """In-memory table mapping files to pressure labels."""
+    """In-memory table mapping files to pressure values."""
 
     def __init__(self) -> None:
         self._rows: Dict[FileKey, File2PressureRow] = {}
@@ -153,24 +154,24 @@ class File2PressureMap:
         self,
         sid: str,
         file_stamp: str,
-        pressure_label: str,
+        pressure_value: float,
         idx: int = 0,
     ) -> None:
-        """Insert a pressure label mapping.
+        """Insert a pressure value mapping.
 
         Parameters
         ----------
-        sid, file_stamp, pressure_label:
-            Identify the file and associated label.
+        sid, file_stamp, pressure_value:
+            Identify the file and associated pressure value in mmHg.
         idx:
             Deprecated argument kept for backward compatibility; it is
-            ignored because each file has a single pressure label.
+            ignored because each file has a single pressure value.
         """
 
         key = (sid, file_stamp)
         if key in self._rows:
             raise KeyError(f"duplicate primary key: {key}")
-        self._rows[key] = File2PressureRow(sid, file_stamp, pressure_label)
+        self._rows[key] = File2PressureRow(sid, file_stamp, pressure_value)
 
     def to_records(self) -> List[Mapping[str, object]]:
         return [asdict(row) for row in self._rows.values()]
@@ -232,7 +233,7 @@ def export_tables(
                 )
             map_key = (sid, file_stamp)
             if map_key in mappings._rows:
-                row["pressure_label"] = mappings._rows[map_key].pressure_label
+                row["pressure_value"] = mappings._rows[map_key].pressure_value
             out.append(row)
         return out
 
