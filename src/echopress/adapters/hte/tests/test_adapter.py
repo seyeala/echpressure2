@@ -1,3 +1,8 @@
+"""Tests for the HTE adapter.
+
+See ``README.md`` for envelope theory and references.
+"""
+
 from echopress.adapters import get_adapter
 import numpy as np
 

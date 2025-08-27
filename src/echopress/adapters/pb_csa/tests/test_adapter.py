@@ -1,3 +1,8 @@
+"""Tests for the PB-CSA adapter.
+
+See ``README.md`` for algorithmic theory and references.
+"""
+
 from echopress.adapters import get_adapter
 import numpy as np
 

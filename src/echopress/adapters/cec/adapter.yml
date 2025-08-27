@@ -1,2 +1,3 @@
 name: cec
-description: Placeholder adapter
+description: Cepstral Envelope Coefficients adapter. See README.md for theory and references.
+docs: README.md

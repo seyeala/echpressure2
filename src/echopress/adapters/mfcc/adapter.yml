@@ -1,2 +1,3 @@
 name: mfcc
-description: Placeholder adapter
+description: Mel-Frequency Cepstral Coefficients adapter. See README.md for theory and references.
+docs: README.md

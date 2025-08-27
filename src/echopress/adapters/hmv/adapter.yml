@@ -1,2 +1,3 @@
 name: hmv
-description: Placeholder adapter
+description: Harmonic Magnitude Vector adapter. See README.md for theory and references.
+docs: README.md

@@ -1,3 +1,8 @@
+"""Tests for the FTS adapter.
+
+See ``README.md`` for spectral theory and references.
+"""
+
 from echopress.adapters import get_adapter
 import numpy as np
 

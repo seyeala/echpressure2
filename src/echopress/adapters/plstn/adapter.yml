@@ -1,2 +1,3 @@
 name: plstn
-description: Placeholder adapter
+description: Peak-Locked Segmentation & Time Normalization adapter. See README.md for theory and references.
+docs: README.md

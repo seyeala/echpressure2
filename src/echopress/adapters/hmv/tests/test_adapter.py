@@ -1,3 +1,8 @@
+"""Tests for the HMV adapter.
+
+See ``README.md`` for theoretical details and references.
+"""
+
 from echopress.adapters import get_adapter
 import numpy as np
 

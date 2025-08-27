@@ -1,3 +1,8 @@
+"""Tests for the WCV adapter.
+
+See ``README.md`` for wavelet theory and references.
+"""
+
 from echopress.adapters import get_adapter
 import numpy as np
 

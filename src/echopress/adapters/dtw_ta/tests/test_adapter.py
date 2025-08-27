@@ -1,3 +1,8 @@
+"""Tests for the DTW-TA adapter.
+
+See ``README.md`` for the alignment theory and references.
+"""
+
 from echopress.adapters import get_adapter
 import numpy as np
 

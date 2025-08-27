@@ -1,0 +1,769 @@
+Raw Dataset Specification: Pressure & Oscilloscope Streams
+with File-Level Midpoint Alignment and Configurable
+Uncertainty
+
+1
+
+Overview: Two Unsynchronized Measurements
+
+The data comprise two streams recorded by different, unsynchronized devices:
+• Pressure stream (P-stream): per-record global timestamp followed by a voltage triple
+(v (1) , v (2) , v (3) ). Each column maps linearly to pressure, but the canonical scalar is only
+channel 3.
+• Oscilloscope stream (O-stream): per file, a time series with NF samples, uniform sampling interval δtF , and amplitudes (channels) collected as v F,n .
+Because the devices are not synchronized, each O-stream file F receives a single scalar pressure
+label by aligning its file midpoint time to the nearest P-stream global timestamp.
+
+2
+
+Pressure Stream (P-stream)
+
+2.1
+
+Per-Record Structure
+
+Each record consists of:
+1. A global timestamp line of the form
+M |{z}
+MM -D |{z}
+DD -H |{z}
+HH -M |{z}
+mm -S |{z}
+SS -U. |{z}
+uuu ,
+month
+
+day
+
+minute
+
+hour
+
+second
+
+subsecond
+
+e.g., M08-D19-H16-M24-S03-U.128. Parsing τ (·) yields absolute time T P ∈ R (seconds).
+2. Immediately followed by a voltage triple:
+v (1)
+
+v (2)
+
+v (3)
+
+(in volts).
+
+For k ∈ {1, 2, 3}, linear calibration is
+p(k) = αk v (k) + βk .
+The canonical scalar pressure is only channel 3 :
+p = p(3) = α3 v (3) + β3 .
+(3)
+
+P , p )}M
+We denote the P-stream as P = {(Tm
+m m=1 with pm = α3 vm + β3 .
+
+1
+
+3
+
+Oscilloscope Stream (O-stream)
+
+3.1
+
+Per-File Structure and Timing
+
+Each oscilloscope file F carries a session ID and an embedded global timestamp, e.g.,
+itid0notrig3M08-D19-H16-M24-S43-U.788.csv.
+We parse F ≡ (sid, stamp, ext) and set TFstart = τ (stamp). Within the file, we have a uniform
+series of length NF with sampling interval δtF :
+tF,n = TFstart + n δtF ,
+
+n = 0, 1, . . . , NF − 1.
+
+Let DF = NF δtF be the duration and
+TFmid = TFstart + 21 DF .
+
+4
+
+(1)
+
+File-Level Mapping to Pressure (Nearest Timestamp)
+
+For each O-stream file F , map its midpoint time to the nearest P-stream timestamp:
+T P∗ (F ) ∈ arg
+
+min
+
+P ∈{T P ,...,T P }
+Tm
+1
+M
+
+P
+TFmid − Tm
+.
+
+(2)
+
+The associated scalar pressure label is p∗ (F ) = p evaluated at T P∗ (F ).
+Alignment error and acceptance. Define the file-level alignment error
+Ealign (F ) =
+
+TFstart + 21 NF δtF − T P∗ (F ) .
+
+(3)
+
+Mapping is accepted if Ealign (F ) ≤ Omax , where Omax > 0 is provided in the external configuration file.
+
+5
+
+Pressure Error from Mapping Mismatch
+
+Let p(t) denote the scalar pressure trajectory from channel 3. We estimate its local derivative
+at the matched time using a configurable window size W (from the configuration file) around
+T P∗ (F ).
+Derivative estimator (configurable window W ). Define the slope estimator at T P∗ (F ) as
+
+
+ḃ
+pW T P∗ (F ) ≡ DerivEst P; T P∗ (F ), W ,
+(4)
+where DerivEst is a user-selected method (e.g., central difference, local linear regression) over
+the window of temporal width W centered at T P∗ (F ).
+Uncertainty multiplier. Let κ ≥ 0 be a user-provided multiplier that scales the bound
+conservatively.
+Pressure uncertainty bound. The induced pressure inaccuracy for file F due to alignment
+error (3) is
+
+|∆P (F )| ≤ κ ḃ
+pW T P∗ (F ) · Ealign (F ).
+(5)
+Equation (4) (“Eq. 4”) explicitly states that the derivative is estimated using the input window
+W . Reference macro: Eq. (4).
+2
+
+6
+
+Relational Materialization for ML
+
+For downstream ML, a single tall table is sufficient; a normalized mapping is optional.
+
+Option A: Single Tall Table
+
+Signals
+
+sid
+|{z}
+
+session/run ID
+
+N , delta_t, duration
+, file_stamp, |{z}
+idx , t_abs, v (channels), |{z}
+, t_mid, p_time,
+| {z } | {z } | {z } | {z }
+| {z }
+|
+{z
+}
+TFstart
+
+n
+
+NF
+
+tF,n
+
+δtF
+
+DF
+
+TFmid
+
+T P∗ (F )
+
+p
+|{z}
+
+p∗ (F )=p(3)
+
+, O_
+|
+
+O
+
+Primary key: (sid, file_stamp, idx).
+
+Option B: Normalized Mapping
+OscFiles(sid, file_stamp, N, δt, duration, t_mid)
+File2PressureMap(sid, file_stamp, p_time = T P∗ , p = p∗ , O_max, W, kappa, E_align, dP_bound)
+Signals(sid, file_stamp, idx, t_abs, v)
+
+7
+
+External Configuration File: dataset_config.yml
+
+All missing inputs and policy choices are centralized in a YAML file that ships with the
+dataset/repo.
+
+7.1
+
+YAML Schema (math semantics)
+
+Key
+
+Type
+
+Meaning / Math Symbol
+
+calibration.alpha
+calibration.beta
+pressure.scalar_channel
+units.pressure
+units.voltage
+timestamp.format
+timestamp.subsec_unit
+timestamp.timezone
+mapping.tie_breaker
+mapping.O_max
+derivative.method
+derivative.W
+uncertainty.kappa
+quality.min_records_in_W
+
+list[float] (len 3)
+list[float] (len 3)
+int
+str
+str
+str
+str
+str
+enum
+float (s)
+enum
+float (s)
+float
+int
+
+quality.reject_if_Ealign_gt_Omax
+defaults.year_fallback
+
+bool
+int
+
+Per-channel slopes (α1 , α2 , α3 ).
+Per-channel intercepts (β1 , β2 , β3 ).
+Channel index used for scalar pressure (must be 3).
+Pressure unit (e.g., mmHg).
+Voltage unit (e.g., V).
+Stamp grammar/pattern for parser τ (·).
+Subsecond unit for U. field (e.g., ms or us).
+Time zone assumption for stamps.
+Nearest-timestamp tie policy (earliest|latest).
+Max acceptable alignment error Omax (seconds).
+DerivEst type (central_diff|local_linear|savgol
+Window width W used in Eq. (4).
+Multiplier κ used in Eq. (5).
+Minimum P-stream points inside W to accept slop
+estimate.
+If true, discard file when Ealign > Omax .
+Year to use if missing on lines (overridden by fi
+name).
+
+7.2
+
+YAML Example (to include in repo as dataset_config.yml)
+
+calibration:
+alpha: [a1, a2, a3]
+beta: [b1, b2, b3]
+pressure:
+scalar_channel: 3
+
+# slopes for channels 1..3
+# intercepts for channels 1..3
+# must be 3
+3
+
+units:
+pressure: "mmHg"
+voltage: "V"
+timestamp:
+format: "M%02d-D%02d-H%02d-M%02d-S%02d-U.%03d"
+subsec_unit: "ms"
+# or "us"
+timezone: "UTC"
+mapping:
+tie_breaker: "earliest"
+# or "latest"
+O_max: 0.250
+# seconds (example)
+derivative:
+method: "central_diff"
+# or "local_linear", "savgol"
+W: 2.0
+# seconds; window centered at T^{P*}(F)
+uncertainty:
+kappa: 1.0
+# conservative multiplier
+quality:
+min_records_in_W: 3
+# require >=3 P-stream points in window
+reject_if_Ealign_gt_Omax: true
+defaults:
+year_fallback: 2025
+Semantics.
+• Scalar pressure is p = α3 v (3) + β3 ; channels 1,2 may be retained as auxiliary.
+• Alignment follows Eq. (2); error via Eq. (3); acceptance threshold Omax from the YAML.
+• The slope estimator in Eq. (4) uses the window W and method specified in derivative.
+• The uncertainty bound in Eq. (5) uses κ from uncertainty.
+• If reject_if_Ealign_gt_Omax is true and Ealign (F ) > Omax , the file F is excluded or
+flagged.
+
+8
+
+Integrity Constraints & Sanity Checks
+1. Units: voltages in V; pressures in mmHg; (αk , βk ) must be unit-consistent.
+2. Scalar channel: the only scalar pressure used downstream is p(3) .
+3. O-stream timing: tF,n = TFstart + nδtF ; DF = NF δtF ; TFmid as in Eq. (1).
+4. Mapping rule: Eq. (2); error Eq. (3); accept iff Ealign (F ) ≤ Omax .
+5. Derivative window: Eq. (4) uses window W from the YAML config.
+6. Uncertainty bound: Eq. (5) with multiplier κ; store dP_bound.
+7. Determinism: fixed tie-breaking policy for nearest timestamp (YAML mapping.tie_breaker).
+
+9
+
+Minimal Examples
+
+Pressure record (P-stream)
+M08-D19-H16-M24-S03-U.128
+2.427 1.092 6.266
+4
+
+Parsed at T P = τ (“M08-D19-H16-M24-S03-U.128”) with p = α3 · 6.266 + β3 .
+
+Oscilloscope file (O-stream)
+itid0notrig3M08-D19-H16-M24-S43-U.788.csv
+Set TFstart = τ (“M08-D19-H16-M24-S43-U.788”), compute DF = NF δtF , TFmid via Eq. (1), find
+T P∗ (F ) by Eq. (2), Ealign (F ) by Eq. (3), accept if ≤ Omax , and set p∗ (F ) = p at T P∗ (F ) with
+uncertainty bound Eq. (5).
+
+Adapters: Mapping (t, v, δt) to ML-Ready Vectors
+
+10
+
+F −1
+Each adapter A maps the oscilloscope file F with time series {(tF,n , vF,n )}N
+n=0 to a fixed-length
+vector
+xF ∈ RL (independent of NF and invariant to time shifts).
+
+Adapters may depend on an estimated fundamental period T0 (or f0 = 1/T0 ) and configuration
+parameters supplied in dataset_config.yml.
+
+10.1
+
+Adapter API
+
+Given F , configuration Γ, and (optionally) a prior T0 ,
+xF , QF = A(F ; Γ, T0 ) ,
+where QF are quality diagnostics (e.g., cycles used, SNR gain, detection confidence). Each
+adapter must:
+1. produce a fixed length L (set in Γ),
+2. be (approximately) invariant to global time shift of vF,· ,
+3. remain comparable across files with different pulse counts (NF varies).
+
+10.2
+
+Cycle/Period Detection Options (shared prelude)
+
+Before any adapter, we may estimate T0 using one (or combine several) of:
+P
+• Autocorrelation peak: T̂0 ∈ arg maxτ ∈T n vF,n vF,n+τ .
+• Cepstrum: T̂0 at the dominant quefrency peak of C(q) = F −1 {log |F{v}|2 }.
+• Spectral peak: fˆ0 = arg max peak in |F{v}|; T0 = 1/fˆ0 .
+• Fiducial peaks: robust peak picking with amplitude threshold + refractory period near
+T̂0 .
+Quality gates (min peak ratio, min SNR) guard against spurious periodicity.
+
+5
+
+10.3
+
+Adapter A: Phase-Bin Cycle-Synchronous Averaging (PB-CSA)
+
+Idea: Fold samples by phase then average across cycles (super-res in phase).
+1. Estimate T̂0 ; define phase θn = 2π (tF,n mod T̂0 )/T̂0 .
+2. Choose phase bins Θk = [2π(k − 1)/K, 2πk/K), k = 1..K.
+3. Aggregate xk = Aggr{ vF,n : θn ∈ Θk } using mean/median/trimmed-mean.
+4. Shift invariance: rotate so the maximal bin is centered (circular shift) or anchor to a
+fiducial (e.g., rising-edge phase).
+Output: xF ∈ RK (set L = K). Notes: Large K gives phase super-resolution by multi-cycle
+dithering. Require min counts per bin; adapt K if needed. Cycle-synchronous averaging is a
+classical approach for periodic signal enhancement [1].
+
+10.4
+
+Adapter B: Peak-Locked Segmentation & Time Normalization (PLSTN)
+
+Idea: Cut windows around detected peaks, normalize each cycle to M samples, then robustaverage.
+1. Detect peak indices {nj } with refractory ≈ T̂0 .
+2. For each cycle window Wj = [nj − w− , nj + w+ ], resample to M points via bandlimited
+(sinc) or cubic interpolation.
+3. Robust-average across cycles (median / Huber) to get xF ∈ RM .
+Shift invariance: windows are peak-centered. Pros: faithful time-domain shape. Cons: sensitive to missed/false peaks. Notes: Resampling each cycle to a fixed length can compensate for
+slight period variations (e.g., due to speed fluctuations) [2].
+
+10.5
+
+Adapter C: Harmonic Magnitude Vector (HMV)
+
+Idea: Represent the signal by magnitudes at the first H harmonics of fˆ0 .
+X(k) =
+
+X
+
+ˆ
+
+vF,n e−i2πkf0 tF,n ,
+
+k = 1..H,
+
+xF = [X(1), . . . , X(H)].
+
+n
+
+Shift invariance: magnitudes remove phase. Optionally normalize by DC or ℓ2 norm. Pros:
+compact, robust to misalignment. Cons: loses waveform phase/shape details. Notes: Using a
+limited set of harmonic amplitudes is essentially a truncated Fourier series representation of the
+periodic signal [3].
+
+10.6
+
+Adapter D: Cepstral Envelope Coefficients (CEC)
+
+Idea: Use low-quefrency cepstral coefficients to capture periodic envelope.
+
+
+xF = c1 , . . . , cQ , where cq are first Q coefficients of C(q).
+Shift invariance: by construction (depends on magnitude spectrum). Pros: noise-robust;
+detects periodicity. Cons: less interpretable in time domain. Notes: Cepstral analysis was
+introduced for echo and pitch detection in acoustics [4], and low-quefrency coefficients (similar
+to MFCCs) are widely used to represent spectral envelope.
+
+6
+
+10.7
+
+Adapter E: DTW-Template Average (DTW-TA)
+
+Idea: Align each detected cycle to a reference waveform via constrained DTW, resample to M ,
+robust-average.
+1. Build a provisional template (median of a few cycles or from PB-CSA).
+2. Constrained DTW (Sakoe–Chiba band) to warp each cycle to template length M .
+3. Robust-average the aligned cycles ⇒ xF ∈ RM .
+Shift invariance: implicit via alignment. Pros: handles cycle length drift/shape variability.
+Cons: heavier compute; risk of over-warping noise. Notes: Dynamic time warping is a classic
+method for sequence alignment (originating in speech recognition) [5], and can be leveraged to
+compute an average waveform across cycles.
+
+10.8
+
+Adapter F: Matched-Template Projection (MTP)
+
+Idea: If a known canonical periodic pattern z(t) exists (identical across files), estimate shift/scale
+and project onto z.
+X
+2
+(â, τ̂ ) = arg min
+vF,n − a z(tF,n − τ ) ,
+a,τ
+
+
+
+xF = â,
+
+n
+
+⟨vF , zk ⟩
+| {z }
+
+
+, ... .
+
+optional multi-basis
+
+Shift invariance: encode only â or coefficients in the pattern basis; drop τ̂ for invariance. Pros:
+very compact; high SNR when template is accurate. Cons: requires a reliable z(t). Notes: This
+approach parallels the matched filter concept in signal processing [6], where a known template
+is used to detect and quantify a signal of interest.
+
+10.9
+
+Boosting Resolution and Robustness (shared tricks)
+
+• Interpolation: prefer bandlimited/sinc (best fidelity), cubic as lighter fallback.
+• Robust aggregation: median or trimmed-mean (e.g., 10%) to suppress outlier cycles.
+• Adaptive resolution: choose K or M so that expected samples/bin ≥ cmin ; otherwise
+reduce K or merge bins.
+• Normalization (optional): RMS or peak normalization per cycle when amplitude should
+not encode label; leave in absolute units when it should.
+√
+• SNR gain: cycle averaging boosts SNR by ≈ Jeff where Jeff is the number of nonrejected cycles.
+
+10.10
+
+Choosing an Adapter (summary)
+
+Adapter
+
+Output
+
+Shift Inv.
+
+Pros
+
+Cons
+
+PB-CSA
+PLSTN
+HMV
+CEC
+DTW-TA
+MTP
+
+K phase bins
+M samples
+H mags
+Q coeffs
+M samples
+few scalars
+
+via circular align
+peak-centered
+by magnitude
+yes
+via warping
+by design
+
+super-res phase; fast
+faithful waveform
+compact; robust
+noise-robust
+handles drift
+very compact
+
+needs good T0
+peak sensitivity
+loses phase/shape
+less interpretable
+compute heavy
+needs template
+
+7
+
+10.11
+
+Quality Diagnostics (recommended to store)
+
+For each F , store: cycles detected/used (J, Jeff ), detection SNR, min counts/bin (PB-CSA),
+rejected cycle ratio, interpolation method, and an instability flag (e.g., period variance over
+windows).
+
+11
+
+YAML Extensions: Adapter Selection & Hyperparameters
+
+Key
+
+Type
+
+Meaning
+
+adapter.name
+adapter.output_length
+adapter.period_est.method
+adapter.period_est.search_range
+adapter.pb_csa.K
+adapter.pb_csa.aggregator
+adapter.pb_csa.min_bin_count
+adapter.plstn.M
+adapter.plstn.window
+adapter.plstn.interp
+adapter.hmv.H
+adapter.cec.Q
+adapter.dtw_ta.band
+adapter.mtp.template_path
+adapter.normalization
+adapter.reject_outlier_cycles
+adapter.trim_fraction
+adapter.seed
+
+enum
+int
+enum
+[float,float] (s)
+int
+enum
+int
+int
+[int,int]
+enum
+int
+int
+float
+str
+enum
+bool
+float
+int
+
+pb_csa | plstn | hmv | cec | dtw_ta | mtp.
+L (i.e., K or M or H or Q).
+autocorr | cepstrum | spectral | peaks | hybrid.
+plausible T0 bounds.
+# phase bins (if pb_csa).
+mean | median | trimmed_mean.
+minimum samples per phase bin.
+resampled points per cycle (if plstn or dtw_ta).
+w− , w+ samples around peak.
+sinc | cubic.
+# harmonics.
+# low-quefrency coeffs.
+DTW Sakoe–Chiba band (as fraction of M ).
+path to canonical z(t).
+none | rms | peak.
+robust averaging on/off.
+for trimmed means (e.g., 0.1).
+deterministic tie-breaks and sampling.
+
+Notes.
+• Period/phase estimates may be re-used across adapters to save compute.
+• When signal is multi-channel, apply adapters per channel or on a fused channel (e.g.,
+principal component), then concatenate.
+• Store diagnostics with each xF to enable downstream quality-aware ML (e.g., weighting
+by Jeff ).
+
+12
+
+Second-Layer Transform Adapters
+
+In addition to the cycle-synchronous adapters (A–F), we define a second layer of classical
+transform-based adapters. These operate directly on a fixed-length time series (either raw or
+first-layer adapted) to produce a fixed-length vector in RL . Each transform is well-established
+in acoustic signal processing and designed to be invariant to global time shifts.
+Notation (additive). Let Ms denote the input time-sample length provided to any secondlayer transform; for MFCC we retain CMFCC coefficients (typically 12–13).
+
+8
+
+12.1
+
+Adapter G: Fourier Transform Spectrum (FTS)
+
+Idea: Represent the signal by its frequency content. For a time series vn , n = 0, . . . , M − 1,
+the discrete Fourier transform (DFT) is
+X(k) =
+
+M
+−1
+X
+
+vn e−i2πkn/M ,
+
+k = 0, . . . , M − 1.
+
+n=0
+
+We take the magnitude spectrum |X(k)| as features. Shift invariance:
+A circular shift adds
+
+
+only a phase factor, leaving |X(k)| unchanged. Output: xF = |X(0)|, . . . , |X(M/2)| ∈
+RM/2+1 for real signals. Pros: Captures full spectral content, widely used in acoustics. Cons:
+High dimensionality; assumes stationarity over the segment. Reference: [3].
+
+12.2
+
+Adapter H: Hilbert Transform Envelope (HTE)
+
+Idea: Form the analytic signal a(t) = v(t) + iH{v(t)} using the Hilbert transform H{v}, and
+extract the amplitude envelope
+e(t) = |a(t)|,
+
+ϕ(t) = arg(a(t)).
+
+We use sampled e(t) or its summary statistics as the feature vector. Shift invariance: The
+envelope is insensitive to carrier phase and global shifts. Output: xF = [e0 , . . . , eM −1 ] or
+reduced summary. Pros: Captures amplitude modulation patterns critical in acoustics. Cons:
+Loses fine timing; may need subband envelopes. Reference: [7].
+Shift-invariance enforcement (additive). Either (i) circularly rotate e so that arg maxn en
+is at a fixed index (e.g., 0) before sampling, or (ii) compute the DCT of log(e) and keep its first
+Qe coefficients as the feature. Both produce fixed-length, shift-invariant vectors.
+
+12.3
+
+Adapter I: Wavelet Coefficient Vector (WCV)
+
+Idea: Apply the discrete wavelet transform (DWT) to obtain approximation coefficients AJ and
+detail coefficients Dj across scales j = 1, . . . , J. Collect either the raw coefficients or subband
+energies:
+X
+Ej =
+|Dj [n]|2 ,
+xF = [E1 , . . . , EJ , ∥AJ ∥22 ].
+n
+
+Shift invariance: Standard decimated DWT is shift-variant; using stationary wavelet transform
+(SWT) or aggregated energies yields approximate invariance. Output: xF ∈ RJ+1 . Pros:
+Multi-resolution time-frequency analysis; robust to nonstationarity. Cons: Choice of wavelet
+family/levels impacts results. Reference: [8].
+Shift-invariance note (additive). We use stationary (undecimated) wavelets or subbandenergy pooling to achieve approximate shift invariance.
+
+12.4
+
+Adapter J: Mel-Frequency Cepstral Coefficients (MFCC)
+
+Idea: Compute log-energy in mel-spaced frequency bands and apply discrete cosine transform
+(DCT). For B mel filters:
+1. Compute band energies Ek , k = 1..B.
+2. Yk = ln Ek .
+3. Apply DCT: cm =
+
+PB
+
+k=1 Yk cos
+
+B (k − 0.5) , m = 1..M .
+
+ πm
+
+
+
+Shift invariance: Based on spectrum magnitude only, hence invariant to global shifts. Output:
+xF = [c1 , . . . , cM ] ∈ RM . Pros: Compact, perceptually motivated, proven in speech/audio.
+Cons: Discards pitch and fine harmonic detail. Reference: [9].
+9
+
+References
+References
+[1] S. Braun, The Extraction of Periodic Waveforms by Time Domain Averaging, Acustica
+32(2), 69–77 (1975).
+[2] P. D. McFadden, Interpolation techniques for time domain averaging of gear vibration,
+Mechanical Systems and Signal Processing 3(1), 87–97 (1989).
+[3] A. V. Oppenheim and R. W. Schafer, Discrete-Time Signal Processing, Prentice Hall (1989).
+[4] A. M. Noll, Cepstrum pitch determination, J. Acoust. Soc. Am. 41(2), 293–309 (1967).
+[5] H. Sakoe and S. Chiba, Dynamic programming algorithm optimization for spoken word
+recognition, IEEE Trans. Acoust. Speech Signal Process. 26(1), 43–49 (1978).
+[6] G. L. Turin, An introduction to matched filters, IRE Trans. Information Theory 6(3), 311–
+329 (1960).
+[7] S. O. Sadjadi and J. H. L. Hansen, Hilbert envelope based features for robust speaker identification under reverberant mismatched conditions, Proc. IEEE ICASSP, 5448–5451 (2011).
+[8] G. Tzanetakis, G. Essl, and P. Cook, Audio analysis using the discrete wavelet transform,
+Proc. WSES Int. Conf. Acoustics & Music Theory & Applications, Skiathos, Greece (2001).
+[9] S. B. Davis and P. Mermelstein, Comparison of parametric representations for monosyllabic word recognition in continuously spoken sentences, IEEE Trans. Acoust. Speech Signal
+Process. 28(4), 357–366 (1980).
+
+10
+
+
