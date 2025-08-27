@@ -29,6 +29,7 @@ class Settings:
     O_max: float = 0.1
     tie_breaker: str = "earliest"
     W: int = 5
+    derivative_method: str = "central_difference"
     kappa: float = 1.0
 
     @classmethod
@@ -42,6 +43,7 @@ class Settings:
             "O_max": ("ECHOPRESS_O_MAX", float),
             "tie_breaker": ("ECHOPRESS_TIE_BREAKER", str),
             "W": ("ECHOPRESS_W", int),
+            "derivative_method": ("ECHOPRESS_DERIVATIVE_METHOD", str),
             "kappa": ("ECHOPRESS_KAPPA", float),
         }
         data: Dict[str, Any] = {}
