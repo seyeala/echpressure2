@@ -12,8 +12,11 @@ from omegaconf import DictConfig
 
 from .adapters import get_adapter
 from .core.calibration import apply_calibration
+from .core.mapping import align_streams
+from .core.tables import File2PressureMap, OscFiles, Signals, export_tables
 from .config import Settings
 from .ingest import load_ostream, read_pstream
+import json
 
 
 app = typer.Typer(help="Utilities for the echopress project")
@@ -55,6 +58,61 @@ def calibrate(
             np.save(output, calibrated)
     else:
         typer.echo(" ".join(map(str, calibrated)))
+
+
+@app.command()
+def align(
+    ctx: typer.Context,
+    export: Optional[str] = typer.Option(None, "--export", "-e"),
+) -> None:
+    """Align O- and P-streams and populate mapping tables."""
+
+    cfg: DictConfig = ctx.obj
+    ostream = load_ostream(cfg.dataset.ostream)
+    pstream = list(read_pstream(cfg.dataset.pstream))
+
+    result = align_streams(
+        ostream,
+        pstream,
+        tie_breaker=cfg.mapping.tie_breaker,
+        O_max=cfg.mapping.O_max,
+        W=cfg.mapping.W,
+        kappa=cfg.mapping.kappa,
+        reject_if_Ealign_gt_Omax=cfg.quality.reject_if_Ealign_gt_Omax,
+    )
+
+    sid = ostream.session_id
+    file_path = Path(cfg.dataset.ostream)
+    file_stamp = file_path.stem
+
+    signals = Signals()
+    osc_files = OscFiles()
+    fmap = File2PressureMap()
+
+    data = np.asarray(ostream.channels)
+    if data.ndim == 2:
+        data = data[:, 0]
+    data = np.asarray(data).reshape(-1)
+    for idx, value in enumerate(data):
+        signals.add(sid, file_stamp, idx, float(value))
+        osc_files.add(sid, file_stamp, idx, str(file_path))
+
+    if result.mapping >= 0:
+        pressure_value = pstream[result.mapping].pressure
+        fmap.add(sid, file_stamp, pressure_value, alignment_error=result.E_align)
+
+    if export:
+        tables = export_tables(signals, osc_files, fmap, tall=True)
+        with open(export, "w", encoding="utf8") as fh:
+            json.dump(tables, fh, default=float)
+        typer.echo(f"Exported tables to {export}")
+    else:
+        typer.echo(
+            f"Signals: {len(signals)}, OscFiles: {len(osc_files)}, File2PressureMap: {len(fmap)}"
+        )
+        typer.echo(
+            f"Alignment index: {result.mapping}, E_align={result.E_align:.6f}"
+        )
 
 
 @app.command()
