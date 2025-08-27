@@ -1,3 +1,5 @@
 name: cec
-fs: 1.0
-f0: 1.0
+output_length: 0
+period_est:
+  fs: 1.0
+  f0: 1.0
