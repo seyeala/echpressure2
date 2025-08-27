@@ -11,8 +11,8 @@ def make_pstream(times):
     return [
         PStreamRecord(
             datetime.fromtimestamp(t, tz=timezone.utc),
-            (0.0, 0.0, t),
             t,
+            voltages=(0.0, 0.0, t),
         )
         for t in times
     ]

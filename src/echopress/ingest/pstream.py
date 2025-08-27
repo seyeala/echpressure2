@@ -99,8 +99,8 @@ class PStreamRecord:
     """Representation of a single P-stream record."""
 
     timestamp: datetime
-    voltages: tuple[float, float, float]
     pressure: float
+    voltages: tuple[float, float, float] | None = None
 
 
 def _parse_line(
@@ -118,21 +118,29 @@ def _parse_line(
     else:
         parts = line.split()
 
-    if len(parts) < 4:
-        raise ValueError("Expected timestamp followed by three voltage columns")
+    if len(parts) < 2:
+        raise ValueError(
+            "Expected timestamp and pressure or timestamp followed by three voltage columns"
+        )
 
-    ts_str, v1_str, v2_str, v3_str, *_ = parts
-
+    ts_str = parts[0]
     timestamp = parse_timestamp(ts_str, settings=settings)
-    voltages = (float(v1_str), float(v2_str), float(v3_str))
 
-    alpha_arr = np.asarray(alpha, dtype=float)
-    beta_arr = np.asarray(beta, dtype=float)
-    pressures = alpha_arr * np.asarray(voltages) + beta_arr
-    ch = settings.pressure.scalar_channel
-    pressure = float(pressures[ch])
+    if len(parts) >= 4:
+        v1_str, v2_str, v3_str = parts[1:4]
+        voltages = (float(v1_str), float(v2_str), float(v3_str))
 
-    return PStreamRecord(timestamp, voltages, pressure)
+        alpha_arr = np.asarray(alpha, dtype=float)
+        beta_arr = np.asarray(beta, dtype=float)
+        pressures = alpha_arr * np.asarray(voltages) + beta_arr
+        ch = settings.pressure.scalar_channel
+        pressure = float(pressures[ch])
+    else:
+        p_str = parts[1]
+        voltages = None
+        pressure = float(p_str)
+
+    return PStreamRecord(timestamp, pressure, voltages)
 
 
 def read_pstream(
@@ -176,7 +184,7 @@ def read_pstream(
                     except ValueError:
                         timestamp = datetime.fromtimestamp(float(ts_val), tz=tz)
                     pressure = float(p_val)
-                    yield PStreamRecord(timestamp, (0.0, 0.0, 0.0), pressure)
+                    yield PStreamRecord(timestamp, pressure, None)
         else:
             with open(p, "r", encoding="utf8") as fh:
                 for line in fh:
