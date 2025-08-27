@@ -17,8 +17,9 @@ import numpy as np
 
 # Regular expression recognising the timestamp grammar.  The grammar is
 # intentionally permissive in order to interoperate with a variety of
-# datasets.  It accepts ISO-8601 strings, ``HH:MM:SS`` strings and plain
-# floating point seconds since the Unix epoch.
+# datasets.  It accepts ISO-8601 strings, ``HH:MM:SS`` strings,
+# ``Mxx-Dxx-Hxx-Mxx-Sxx-U.xxx`` strings and plain floating point seconds
+# since the Unix epoch.
 TIMESTAMP_RE = re.compile(
     r"""^\s*
         (?:
@@ -27,6 +28,8 @@ TIMESTAMP_RE = re.compile(
             (?P<hms>\d{2}:\d{2}:\d{2}(?:\.\d+)?)
             |
             (?P<float>\d+(?:\.\d+)?)
+            |
+            M(?P<month>\d{2})-D(?P<day>\d{2})-H(?P<hour>\d{2})-M(?P<minute>\d{2})-S(?P<second>\d{2})-U(?:\.(?P<subsecond>\d+))?
         )
         \s*$""",
     re.VERBOSE,
@@ -40,8 +43,9 @@ def parse_timestamp(token: str) -> datetime:
     ----------
     token:
         String representation of a timestamp.  Supported forms include
-        ISO-8601 date/time strings, ``HH:MM:SS[.ffffff]`` strings and
-        numeric seconds since the Unix epoch.
+        ISO-8601 date/time strings, ``HH:MM:SS[.ffffff]`` strings,
+        ``Mxx-Dxx-Hxx-Mxx-Sxx-U.xxx`` strings and numeric seconds since
+        the Unix epoch.
     """
     m = TIMESTAMP_RE.match(token)
     if not m:
@@ -58,7 +62,22 @@ def parse_timestamp(token: str) -> datetime:
             today, datetime.strptime(m.group("hms"), fmt).time(), tzinfo=timezone.utc
         )
 
-    return datetime.fromtimestamp(float(m.group("float")), tz=timezone.utc)
+    if m.group("float"):
+        return datetime.fromtimestamp(float(m.group("float")), tz=timezone.utc)
+
+    today = datetime.now(timezone.utc)
+    sub = m.group("subsecond") or ""
+    microsecond = int((sub + "000000")[:6])
+    return datetime(
+        today.year,
+        int(m.group("month")),
+        int(m.group("day")),
+        int(m.group("hour")),
+        int(m.group("minute")),
+        int(m.group("second")),
+        microsecond,
+        tzinfo=timezone.utc,
+    )
 
 
 @dataclass
