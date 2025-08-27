@@ -72,16 +72,33 @@ configuration in `conf/config.yaml` composes several YAML groups under `conf/`,
 including:
 
 * `dataset` – paths to example O- and P-streams (O-streams may be `.npz`, `.json`, or `.csv`)
+* `mapping` – alignment and derivative parameters
 * `calibration` – per-channel calibration coefficients
+* `pressure` – which channel contains scalar pressure data
+* `units` – display units for pressure and voltage
+* `timestamp` – parsing controls
+* `quality` – quality gates for downstream processing
 * `adapter` – parameters for signal adapters
 * `viz` – options for plotting
 
-By default, the library operates on channel `3`. Override this with
-`calibration.channel` or the `ECHOPRESS_CHANNEL` environment variable.
-
-The adapter section uses a nested schema. A minimal configuration looks like:
+The configuration uses a nested schema. A minimal configuration looks like:
 
 ```yaml
+calibration:
+  alpha: [1.0, 1.0, 1.0]
+  beta: [0.0, 0.0, 0.0]
+pressure:
+  scalar_channel: 2
+units:
+  pressure: Pa
+  voltage: V
+timestamp:
+  format: null
+  timezone: UTC
+  year_fallback: 1970
+quality:
+  reject_if_Ealign_gt_Omax: true
+  min_records_in_W: 3
 adapter:
   name: cec
   output_length: 0  # use full output
@@ -95,11 +112,11 @@ passed directly on the command line. For example, to adjust calibration
 parameters at runtime:
 
 ```bash
-python -m echopress.cli calibrate data.npy -o out.npy calibration.alpha=2.0
+python -m echopress.cli calibrate data.npy -o out.npy calibration.alpha='[2.0]'
 ```
 
-The `Settings` dataclass remains available for functions that expect it. In the
-CLI, values from Hydra's `calibration` section are converted into `Settings`
+The `Settings` container remains available for functions that expect it. In the
+CLI, values from Hydra's nested sections are converted into `Settings`
 instances for compatibility. `Settings.from_env` and
 `echopress.config.load_settings` still allow configuration via environment
 variables or explicit files when Hydra is not desired.

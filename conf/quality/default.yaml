@@ -1,0 +1,2 @@
+reject_if_Ealign_gt_Omax: true
+min_records_in_W: 3

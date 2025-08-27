@@ -61,9 +61,9 @@ def central_difference(
         settings = Settings()
 
     if W is None:
-        W = settings.W
+        W = settings.mapping.W
     if kappa is None:
-        kappa = settings.kappa  # currently unused but kept for API symmetry
+        kappa = settings.mapping.kappa  # currently unused but kept for API symmetry
 
     arr = np.asarray(series, dtype=float)
     n = arr.size
@@ -116,9 +116,9 @@ def local_linear(
         settings = Settings()
 
     if W is None:
-        W = settings.W
+        W = settings.mapping.W
     if kappa is None:
-        kappa = settings.kappa  # unused
+        kappa = settings.mapping.kappa  # unused
 
     arr = np.asarray(series, dtype=float)
     n = arr.size
@@ -177,9 +177,9 @@ def savgol(
         settings = Settings()
 
     if W is None:
-        W = settings.W
+        W = settings.mapping.W
     if kappa is None:
-        kappa = settings.kappa  # unused
+        kappa = settings.mapping.kappa  # unused
 
     arr = np.asarray(series, dtype=float)
     n = arr.size

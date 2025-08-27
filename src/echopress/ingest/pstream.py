@@ -9,11 +9,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from typing import Iterator, Union, TextIO, Sequence
 import pathlib
 import re
 
 import numpy as np
+
+from ..config import Settings
 
 # Regular expression recognising the timestamp grammar.  The grammar is
 # intentionally permissive in order to interoperate with a variety of
@@ -36,47 +39,57 @@ TIMESTAMP_RE = re.compile(
 )
 
 
-def parse_timestamp(token: str) -> datetime:
-    """Parse a timestamp token.
+def parse_timestamp(token: str, *, settings: Settings | None = None) -> datetime:
+    """Parse a timestamp token using ``settings.timestamp`` controls."""
 
-    Parameters
-    ----------
-    token:
-        String representation of a timestamp.  Supported forms include
-        ISO-8601 date/time strings, ``HH:MM:SS[.ffffff]`` strings,
-        ``Mxx-Dxx-Hxx-Mxx-Sxx-U.xxx`` strings and numeric seconds since
-        the Unix epoch.
-    """
+    if settings is None:
+        settings = Settings()
+
+    ts_cfg = settings.timestamp
+    tz = ZoneInfo(ts_cfg.timezone)
+
+    if ts_cfg.format:
+        try:
+            dt = datetime.strptime(token, ts_cfg.format)
+            return dt.replace(tzinfo=tz)
+        except ValueError:
+            pass
+
     m = TIMESTAMP_RE.match(token)
     if not m:
         raise ValueError(f"Unrecognised timestamp: {token!r}")
 
     if m.group("iso"):
         iso = m.group("iso").replace("Z", "+00:00")
-        return datetime.fromisoformat(iso)
+        dt = datetime.fromisoformat(iso)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=tz)
+        return dt
 
     if m.group("hms"):
         fmt = "%H:%M:%S.%f" if "." in m.group("hms") else "%H:%M:%S"
-        today = datetime.now(timezone.utc).date()
+        today = datetime.now(tz).date()
+        date = today.replace(year=ts_cfg.year_fallback)
         return datetime.combine(
-            today, datetime.strptime(m.group("hms"), fmt).time(), tzinfo=timezone.utc
+            date,
+            datetime.strptime(m.group("hms"), fmt).time(),
+            tzinfo=tz,
         )
 
     if m.group("float"):
-        return datetime.fromtimestamp(float(m.group("float")), tz=timezone.utc)
+        return datetime.fromtimestamp(float(m.group("float")), tz=tz)
 
-    today = datetime.now(timezone.utc)
     sub = m.group("subsecond") or ""
     microsecond = int((sub + "000000")[:6])
     return datetime(
-        today.year,
+        ts_cfg.year_fallback,
         int(m.group("month")),
         int(m.group("day")),
         int(m.group("hour")),
         int(m.group("minute")),
         int(m.group("second")),
         microsecond,
-        tzinfo=timezone.utc,
+        tzinfo=tz,
     )
 
 
@@ -90,7 +103,10 @@ class PStreamRecord:
 
 
 def _parse_line(
-    line: str, alpha: Sequence[float], beta: Sequence[float]
+    line: str,
+    alpha: Sequence[float],
+    beta: Sequence[float],
+    settings: Settings,
 ) -> PStreamRecord | None:
     line = line.strip()
     if not line or line.startswith("#"):
@@ -106,13 +122,14 @@ def _parse_line(
 
     ts_str, v1_str, v2_str, v3_str, *_ = parts
 
-    timestamp = parse_timestamp(ts_str)
+    timestamp = parse_timestamp(ts_str, settings=settings)
     voltages = (float(v1_str), float(v2_str), float(v3_str))
 
     alpha_arr = np.asarray(alpha, dtype=float)
     beta_arr = np.asarray(beta, dtype=float)
     pressures = alpha_arr * np.asarray(voltages) + beta_arr
-    pressure = float(pressures[2])
+    ch = settings.pressure.scalar_channel
+    pressure = float(pressures[ch])
 
     return PStreamRecord(timestamp, voltages, pressure)
 
@@ -120,6 +137,7 @@ def _parse_line(
 def read_pstream(
     path: Union[str, pathlib.Path, TextIO],
     *,
+    settings: Settings | None = None,
     alpha: Sequence[float] | None = None,
     beta: Sequence[float] | None = None,
 ) -> Iterator[PStreamRecord]:
@@ -133,19 +151,22 @@ def read_pstream(
         Per-channel calibration coefficients. If omitted an identity
         calibration is used.
     """
+    if settings is None:
+        settings = Settings()
+
     if alpha is None:
-        alpha = (1.0, 1.0, 1.0)
+        alpha = settings.calibration.alpha
     if beta is None:
-        beta = (0.0, 0.0, 0.0)
+        beta = settings.calibration.beta
 
     if isinstance(path, (str, pathlib.Path)):
         with open(path, "r", encoding="utf8") as fh:
             for line in fh:
-                record = _parse_line(line, alpha, beta)
+                record = _parse_line(line, alpha, beta, settings)
                 if record is not None:
                     yield record
     else:
         for line in path:
-            record = _parse_line(line, alpha, beta)
+            record = _parse_line(line, alpha, beta, settings)
             if record is not None:
                 yield record

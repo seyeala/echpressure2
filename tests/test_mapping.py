@@ -65,7 +65,11 @@ def test_tie_break_behaviour():
 def test_alignment_with_settings():
     ostream = OStream(session_id="s", timestamps=np.array([0.0, 10.0, 20.0]), channels=np.zeros((0, 0)), meta={})
     pstream = make_pstream([10.0, 20.0, 30.0])
-    settings = Settings(tie_breaker="earliest", O_max=1.0, W=3, kappa=1.0)
+    settings = Settings()
+    settings.mapping.tie_breaker = "earliest"
+    settings.mapping.O_max = 1.0
+    settings.mapping.W = 3
+    settings.mapping.kappa = 1.0
     result = align_streams(ostream, pstream, settings=settings)
     assert result.mapping == 0
 

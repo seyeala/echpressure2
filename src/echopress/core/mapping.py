@@ -69,15 +69,16 @@ def align_streams(
     if settings is None:
         settings = Settings()
 
-    tie_breaker = tie_breaker or settings.tie_breaker
-    O_max = settings.O_max if O_max is None else O_max
-    W = settings.W if W is None else W
-    kappa = settings.kappa if kappa is None else kappa
+    tie_breaker = tie_breaker or settings.mapping.tie_breaker
+    O_max = settings.mapping.O_max if O_max is None else O_max
+    W = settings.mapping.W if W is None else W
+    kappa = settings.mapping.kappa if kappa is None else kappa
     reject_if_Ealign_gt_Omax = (
-        settings.reject_if_Ealign_gt_Omax
+        settings.quality.reject_if_Ealign_gt_Omax
         if reject_if_Ealign_gt_Omax is None
         else reject_if_Ealign_gt_Omax
     )
+    min_records = settings.quality.min_records_in_W
 
     if tie_breaker not in {"earliest", "latest"}:
         raise ValueError("tie_breaker must be 'earliest' or 'latest'")
@@ -126,6 +127,10 @@ def align_streams(
             return AlignmentResult(mapping=-1, E_align=E_align, diagnostics=diagnostics)
 
     # Derivative of the P-stream pressures
+    if pressures.size < min_records:
+        diagnostics["rejected"] = True
+        return AlignmentResult(mapping=-1, E_align=E_align, diagnostics=diagnostics)
+
     if pressures.size >= 2:
         dt = float(np.mean(np.diff(p_times)))
     else:

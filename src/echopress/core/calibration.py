@@ -74,7 +74,7 @@ def apply_calibration(
         arguments.
     channel:
         Index of the channel whose coefficients should be applied. If ``None``
-        the value is taken from ``settings.channel``.
+        the value is taken from ``settings.pressure.scalar_channel``.
     settings:
         Optional :class:`~echopress.config.Settings` instance providing default
         values.
@@ -92,16 +92,18 @@ def apply_calibration(
         settings = Settings()
 
     if channel is None:
-        channel = settings.channel
+        channel = settings.pressure.scalar_channel
 
     if coeffs is not None:
         alpha = coeffs.alpha[channel]
         beta = coeffs.beta[channel]
     else:
         if alpha is None:
-            alpha = settings.alpha
+            al = settings.calibration.alpha
+            alpha = al[channel] if channel < len(al) else al[0]
         if beta is None:
-            beta = settings.beta
+            be = settings.calibration.beta
+            beta = be[channel] if channel < len(be) else be[0]
 
     if alpha is None or beta is None:
         raise ValueError("alpha and beta coefficients must be specified")

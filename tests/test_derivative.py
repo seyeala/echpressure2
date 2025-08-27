@@ -21,7 +21,9 @@ def test_defaults_from_settings():
     t = np.linspace(0, 1, 11)
     series = np.sin(t)
     dt = t[1] - t[0]
-    settings = Settings(W=5, kappa=1.0)
+    settings = Settings()
+    settings.mapping.W = 5
+    settings.mapping.kappa = 1.0
     expected = central_difference(series, dt, 5)
     result = central_difference(series, dt, settings=settings)
     np.testing.assert_allclose(result, expected)
@@ -31,7 +33,9 @@ def test_override_settings():
     t = np.linspace(0, 1, 11)
     series = np.sin(t)
     dt = t[1] - t[0]
-    settings = Settings(W=7, kappa=1.0)
+    settings = Settings()
+    settings.mapping.W = 7
+    settings.mapping.kappa = 1.0
     result = central_difference(series, dt, W=3, settings=settings)
     expected = central_difference(series, dt, 3)
     np.testing.assert_allclose(result, expected)
