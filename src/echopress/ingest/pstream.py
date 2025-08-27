@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import csv
 from zoneinfo import ZoneInfo
 from typing import Iterator, Union, TextIO, Sequence
 import pathlib
@@ -98,7 +99,7 @@ class PStreamRecord:
     """Representation of a single P-stream record."""
 
     timestamp: datetime
-    voltages: tuple[float, float, float]
+    voltages: tuple[float, float, float] | None
     pressure: float
 
 
@@ -117,21 +118,27 @@ def _parse_line(
     else:
         parts = line.split()
 
-    if len(parts) < 4:
-        raise ValueError("Expected timestamp followed by three voltage columns")
+    if len(parts) >= 4:
+        ts_str, v1_str, v2_str, v3_str, *_ = parts
+        timestamp = parse_timestamp(ts_str, settings=settings)
+        voltages = (float(v1_str), float(v2_str), float(v3_str))
 
-    ts_str, v1_str, v2_str, v3_str, *_ = parts
+        alpha_arr = np.asarray(alpha, dtype=float)
+        beta_arr = np.asarray(beta, dtype=float)
+        pressures = alpha_arr * np.asarray(voltages) + beta_arr
+        ch = settings.pressure.scalar_channel
+        pressure = float(pressures[ch])
+        return PStreamRecord(timestamp, voltages, pressure)
 
-    timestamp = parse_timestamp(ts_str, settings=settings)
-    voltages = (float(v1_str), float(v2_str), float(v3_str))
+    if len(parts) >= 2:
+        ts_str, p_str, *_ = parts
+        timestamp = parse_timestamp(ts_str, settings=settings)
+        pressure = float(p_str)
+        return PStreamRecord(timestamp, None, pressure)
 
-    alpha_arr = np.asarray(alpha, dtype=float)
-    beta_arr = np.asarray(beta, dtype=float)
-    pressures = alpha_arr * np.asarray(voltages) + beta_arr
-    ch = settings.pressure.scalar_channel
-    pressure = float(pressures[ch])
-
-    return PStreamRecord(timestamp, voltages, pressure)
+    raise ValueError(
+        "Expected timestamp followed by three voltage columns or pressure"
+    )
 
 
 def read_pstream(
@@ -160,11 +167,39 @@ def read_pstream(
         beta = settings.calibration.beta
 
     if isinstance(path, (str, pathlib.Path)):
-        with open(path, "r", encoding="utf8") as fh:
-            for line in fh:
-                record = _parse_line(line, alpha, beta, settings)
-                if record is not None:
-                    yield record
+        path = pathlib.Path(path)
+        if path.suffix.lower() == ".csv":
+            with open(path, "r", encoding="utf8", newline="") as fh:
+                reader = csv.DictReader(fh)
+                if reader.fieldnames is None or not {
+                    "timestamp",
+                    "pressure",
+                }.issubset({name.lower() for name in reader.fieldnames}):
+                    raise ValueError(
+                        "CSV must contain 'timestamp' and 'pressure' headers"
+                    )
+                tz = ZoneInfo(settings.timestamp.timezone)
+                for row in reader:
+                    ts_val = row.get("timestamp")
+                    pr_val = row.get("pressure")
+                    if ts_val is None or pr_val is None:
+                        continue
+                    if isinstance(ts_val, (int, float)):
+                        timestamp = datetime.fromtimestamp(float(ts_val), tz=tz)
+                    else:
+                        token = str(ts_val).strip()
+                        if token.replace(".", "", 1).isdigit():
+                            timestamp = datetime.fromtimestamp(float(token), tz=tz)
+                        else:
+                            timestamp = parse_timestamp(token, settings=settings)
+                    pressure = float(pr_val)
+                    yield PStreamRecord(timestamp, None, pressure)
+        else:
+            with open(path, "r", encoding="utf8") as fh:
+                for line in fh:
+                    record = _parse_line(line, alpha, beta, settings)
+                    if record is not None:
+                        yield record
     else:
         for line in path:
             record = _parse_line(line, alpha, beta, settings)
