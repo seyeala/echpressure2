@@ -1,2 +1,3 @@
 name: dtw_ta
-description: Placeholder adapter
+description: Dynamic Time Warping Template Average adapter. See README.md for theory and references.
+docs: README.md

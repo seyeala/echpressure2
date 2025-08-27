@@ -1,2 +1,3 @@
 name: pb_csa
-description: Placeholder adapter
+description: Phase-Bin Cycle-Synchronous Averaging adapter. See README.md for theory and references.
+docs: README.md

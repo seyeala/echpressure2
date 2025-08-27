@@ -1,3 +1,8 @@
+"""Tests for the PLSTN adapter.
+
+See ``README.md`` for theoretical background and references.
+"""
+
 from echopress.adapters import get_adapter
 import numpy as np
 

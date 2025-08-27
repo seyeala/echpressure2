@@ -1,2 +1,3 @@
 name: hte
-description: Placeholder adapter
+description: Hilbert Transform Envelope adapter. See README.md for theory and references.
+docs: README.md

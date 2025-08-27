@@ -1,2 +1,3 @@
 name: fts
-description: Placeholder adapter
+description: Fourier Transform Spectrum adapter. See README.md for theory and references.
+docs: README.md

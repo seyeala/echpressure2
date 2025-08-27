@@ -1,3 +1,8 @@
+"""Tests for the MFCC adapter.
+
+See ``README.md`` for spectral-envelope theory and references.
+"""
+
 from echopress.adapters import get_adapter
 import numpy as np
 

@@ -1,3 +1,8 @@
+"""Tests for the CEC adapter.
+
+See ``README.md`` for theoretical motivation and references.
+"""
+
 from echopress.adapters import get_adapter
 import numpy as np
 

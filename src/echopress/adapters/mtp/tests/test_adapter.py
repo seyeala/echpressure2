@@ -1,3 +1,8 @@
+"""Tests for the MTP adapter.
+
+See ``README.md`` for the matched-filter formulation and references.
+"""
+
 from echopress.adapters import get_adapter
 import numpy as np
 
