@@ -1,0 +1,11 @@
+defaults:
+  - default
+
+# Use smaller sample files for quick development runs.
+root:
+  ostream: ./dev
+  pstream: ./dev
+
+ostream: ${dataset.root.ostream}/sample_ostream_dev.npz
+pstream: ${dataset.root.pstream}/sample_pstream_dev.txt
+

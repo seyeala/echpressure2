@@ -1,3 +1,14 @@
-# Paths to input streams; these are placeholders that may be overridden.
-ostream: sample_ostream.npz
-pstream: sample_pstream.txt
+# Root directories for input streams. These can be overridden as needed.
+root:
+  ostream: .
+  pstream: .
+
+# Paths to input streams relative to the roots above.
+ostream: ${dataset.root.ostream}/sample_ostream.npz
+pstream: ${dataset.root.pstream}/sample_pstream.txt
+
+# Metadata about P-stream timestamps.
+timezone: UTC
+timestamp_grammar: |
+  ISO-8601, HH:MM:SS[.ffffff], or floating-point seconds since the Unix epoch
+
