@@ -9,9 +9,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Iterator, Union, TextIO
+from typing import Iterator, Union, TextIO, Sequence
 import pathlib
 import re
+
+import numpy as np
 
 # Regular expression recognising the timestamp grammar.  The grammar is
 # intentionally permissive in order to interoperate with a variety of
@@ -64,40 +66,67 @@ class PStreamRecord:
     """Representation of a single P-stream record."""
 
     timestamp: datetime
+    voltages: tuple[float, float, float]
     pressure: float
 
 
-def _parse_line(line: str) -> PStreamRecord | None:
+def _parse_line(
+    line: str, alpha: Sequence[float], beta: Sequence[float]
+) -> PStreamRecord | None:
     line = line.strip()
     if not line or line.startswith("#"):
         return None
 
     if "," in line:
-        ts_str, p_str, *_ = line.split(",")
+        parts = [t.strip() for t in line.split(",")]
     else:
-        ts_str, p_str, *_ = line.split()
+        parts = line.split()
+
+    if len(parts) < 4:
+        raise ValueError("Expected timestamp followed by three voltage columns")
+
+    ts_str, v1_str, v2_str, v3_str, *_ = parts
 
     timestamp = parse_timestamp(ts_str)
-    pressure = float(p_str)
-    return PStreamRecord(timestamp, pressure)
+    voltages = (float(v1_str), float(v2_str), float(v3_str))
+
+    alpha_arr = np.asarray(alpha, dtype=float)
+    beta_arr = np.asarray(beta, dtype=float)
+    pressures = alpha_arr * np.asarray(voltages) + beta_arr
+    pressure = float(pressures[2])
+
+    return PStreamRecord(timestamp, voltages, pressure)
 
 
-def read_pstream(path: Union[str, pathlib.Path, TextIO]) -> Iterator[PStreamRecord]:
+def read_pstream(
+    path: Union[str, pathlib.Path, TextIO],
+    *,
+    alpha: Sequence[float] | None = None,
+    beta: Sequence[float] | None = None,
+) -> Iterator[PStreamRecord]:
     """Yield records from a P-stream file.
 
     Parameters
     ----------
     path:
         Either a path-like object or a text file object providing lines.
+    alpha, beta:
+        Per-channel calibration coefficients. If omitted an identity
+        calibration is used.
     """
+    if alpha is None:
+        alpha = (1.0, 1.0, 1.0)
+    if beta is None:
+        beta = (0.0, 0.0, 0.0)
+
     if isinstance(path, (str, pathlib.Path)):
         with open(path, "r", encoding="utf8") as fh:
             for line in fh:
-                record = _parse_line(line)
+                record = _parse_line(line, alpha, beta)
                 if record is not None:
                     yield record
     else:
         for line in path:
-            record = _parse_line(line)
+            record = _parse_line(line, alpha, beta)
             if record is not None:
                 yield record

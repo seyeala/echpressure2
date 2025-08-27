@@ -8,7 +8,14 @@ from echopress.core import align_streams
 
 
 def make_pstream(times):
-    return [PStreamRecord(datetime.fromtimestamp(t, tz=timezone.utc), t) for t in times]
+    return [
+        PStreamRecord(
+            datetime.fromtimestamp(t, tz=timezone.utc),
+            (0.0, 0.0, t),
+            t,
+        )
+        for t in times
+    ]
 
 
 def test_basic_alignment():
