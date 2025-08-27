@@ -9,6 +9,7 @@ import numpy as np
 
 from ..ingest import OStream, PStreamRecord
 from ..config import Settings
+from core import central_difference, pressure_uncertainty
 
 
 @dataclass
@@ -38,7 +39,7 @@ def align_streams(
     pstream: Sequence[PStreamRecord],
     *,
     settings: Settings | None = None,
-    tie_break: str | None = None,
+    tie_breaker: str | None = None,
     O_max: float | None = None,
     W: int | None = None,
     kappa: float | None = None,
@@ -54,7 +55,7 @@ def align_streams(
     settings:
         Optional :class:`~echopress.config.Settings` instance providing default
         values for the remaining parameters.
-    tie_break, O_max, W, kappa:
+    tie_breaker, O_max, W, kappa:
         Individual overrides for the respective parameters.  Any value set here
         takes precedence over those supplied in ``settings``.
 
@@ -67,13 +68,13 @@ def align_streams(
     if settings is None:
         settings = Settings()
 
-    tie_break = tie_break or settings.tie_break
+    tie_breaker = tie_breaker or settings.tie_breaker
     O_max = settings.O_max if O_max is None else O_max
     W = settings.W if W is None else W
     kappa = settings.kappa if kappa is None else kappa
 
-    if tie_break not in {"earlier", "later"}:
-        raise ValueError("tie_break must be 'earlier' or 'later'")
+    if tie_breaker not in {"earliest", "latest"}:
+        raise ValueError("tie_breaker must be 'earliest' or 'latest'")
 
     o_times = np.asarray(ostream.timestamps, dtype=float)
     if o_times.ndim != 1 or o_times.size < 2:
@@ -84,6 +85,8 @@ def align_streams(
     p_times = np.array([rec.timestamp.timestamp() for rec in pstream], dtype=float)
     if p_times.size == 0:
         raise ValueError("pstream is empty")
+
+    pressures = np.array([rec.pressure for rec in pstream], dtype=float)
 
     mapping = np.empty(midpoints.shape, dtype=int)
     E_align = np.empty(midpoints.shape, dtype=float)
@@ -102,7 +105,7 @@ def align_streams(
             elif prev_diff > next_diff:
                 idx = j
             else:
-                idx = j - 1 if tie_break == "earlier" else j
+                idx = j - 1 if tie_breaker == "earliest" else j
         mapping[i] = idx
         E_align[i] = abs(mp - p_times[idx])
         if E_align[i] > O_max:
@@ -110,6 +113,29 @@ def align_streams(
                 f"Alignment error {E_align[i]:.3f}s exceeds O_max at index {i}"
             )
 
-    diagnostics = {"tie_break": tie_break, "O_max": O_max, "W": W, "kappa": kappa, "midpoints": midpoints}
+    # Derivative of the P-stream pressures
+    if pressures.size >= 2:
+        dt = float(np.mean(np.diff(p_times)))
+    else:
+        dt = 1.0
+    W_eff = W
+    if W_eff > pressures.size:
+        W_eff = pressures.size - (1 - pressures.size % 2)
+    if W_eff < 3:
+        dp_dt_full = np.gradient(pressures, p_times, edge_order=1)
+    else:
+        dp_dt_full = central_difference(pressures, dt, W=W_eff)
+    dp_dt = dp_dt_full[mapping]
+    delta_p = pressure_uncertainty(dp_dt, E_align, kappa)
+
+    diagnostics = {
+        "tie_breaker": tie_breaker,
+        "O_max": O_max,
+        "W": W,
+        "kappa": kappa,
+        "midpoints": midpoints,
+        "dp_dt": dp_dt,
+        "delta_p": delta_p,
+    }
     return AlignmentResult(mapping=mapping, E_align=E_align, diagnostics=diagnostics)
 
