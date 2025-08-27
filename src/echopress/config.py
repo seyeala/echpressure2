@@ -89,6 +89,9 @@ class Settings:
     units: UnitsSettings = field(default_factory=UnitsSettings)
     timestamp: TimestampSettings = field(default_factory=TimestampSettings)
     quality: QualitySettings = field(default_factory=QualitySettings)
+    pstream_csv_patterns: list[str] = field(
+        default_factory=lambda: ["voltprsr"]
+    )
 
     # ------------------------------------------------------------------
     # Helpers
@@ -125,6 +128,10 @@ class Settings:
             "timestamp.format": ("ECHOPRESS_TIMESTAMP_FORMAT", str),
             "timestamp.timezone": ("ECHOPRESS_TIMESTAMP_TIMEZONE", str),
             "timestamp.year_fallback": ("ECHOPRESS_TIMESTAMP_YEAR_FALLBACK", int),
+            "pstream_csv_patterns": (
+                "ECHOPRESS_PSTREAM_CSV_PATTERNS",
+                lambda v: [s.strip() for s in v.split(",") if s.strip()],
+            ),
         }
         for path, (env, conv) in mapping.items():
             if env in os.environ:
