@@ -2,5 +2,9 @@ defaults:
   - dataset: default
   - mapping: default
   - calibration: default
+  - pressure: default
+  - units: default
+  - timestamp: default
+  - quality: default
   - adapter: default
   - viz: default

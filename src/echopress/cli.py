@@ -43,11 +43,10 @@ def calibrate(
     data = np.loadtxt(input, delimiter=",") if input.endswith(".csv") else np.load(
         input
     )
-    settings = Settings(
-        alpha=cfg.calibration.alpha,
-        beta=cfg.calibration.beta,
-        channel=cfg.calibration.channel,
-    )
+    settings = Settings()
+    settings.calibration.alpha = list(cfg.calibration.alpha)
+    settings.calibration.beta = list(cfg.calibration.beta)
+    settings.pressure.scalar_channel = cfg.pressure.scalar_channel
     calibrated = apply_calibration(data, settings=settings)
     if output:
         if output.endswith(".csv"):

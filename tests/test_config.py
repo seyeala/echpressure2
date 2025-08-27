@@ -5,17 +5,17 @@ from echopress.config import Settings, load_settings
 
 
 def test_from_env(monkeypatch):
-    monkeypatch.setenv("ECHOPRESS_ALPHA", "2.5")
+    monkeypatch.setenv("ECHOPRESS_CALIBRATION_ALPHA", "2.5")
     s = Settings.from_env()
-    assert s.alpha == 2.5
+    assert s.calibration.alpha[0] == 2.5
 
 
 def test_load_settings_json(tmp_path):
     p = tmp_path / "cfg.json"
-    p.write_text(json.dumps({"beta": 1.2, "W": 7}))
+    p.write_text(json.dumps({"calibration": {"beta": [1.2]}, "mapping": {"W": 7}}))
     s = load_settings(p)
-    assert s.beta == 1.2
-    assert s.W == 7
+    assert s.calibration.beta[0] == 1.2
+    assert s.mapping.W == 7
 
 
 try:
@@ -27,7 +27,7 @@ except Exception:  # pragma: no cover
 @pytest.mark.skipif(yaml is None, reason="PyYAML not installed")
 def test_load_settings_yaml(tmp_path):
     p = tmp_path / "cfg.yaml"
-    p.write_text("alpha: 1.5\nW: 9\n")
+    p.write_text("calibration:\n  alpha: [1.5]\nmapping:\n  W: 9\n")
     s = load_settings(p)
-    assert s.alpha == 1.5
-    assert s.W == 9
+    assert s.calibration.alpha[0] == 1.5
+    assert s.mapping.W == 9
