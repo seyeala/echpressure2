@@ -14,6 +14,17 @@ configuration in `conf/config.yaml` composes several YAML groups under
 By default, the library operates on channel `3`. Override this with
 `calibration.channel` or the `ECHOPRESS_CHANNEL` environment variable.
 
+The adapter section uses a nested schema. A minimal configuration looks like:
+
+```yaml
+adapter:
+  name: cec
+  output_length: 0  # use full output
+  period_est:
+    fs: 10.0
+    f0: 2.0
+```
+
 Commands in `echopress.cli` are wrapped by ``hydra.main`` so overrides can be
 passed directly on the command line. For example, to adjust calibration
 parameters at runtime:
