@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from echopress.config import Settings
-from core import central_difference, local_linear, savgol
+from echopress.core import central_difference, local_linear, savgol
 
 
 @pytest.mark.parametrize("estimator", [central_difference, local_linear, savgol])

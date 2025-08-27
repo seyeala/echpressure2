@@ -1,6 +1,6 @@
 import numpy as np
 
-from core import pressure_uncertainty, bound_pressure
+from echopress.core import pressure_uncertainty, bound_pressure
 
 
 def test_pressure_uncertainty_and_bounds():
