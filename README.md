@@ -6,7 +6,7 @@ Runtime configuration is managed with [Hydra](https://hydra.cc).  The default
 configuration in `conf/config.yaml` composes several YAML groups under
 `conf/`, including:
 
-* `dataset` – paths to example O- and P-streams
+* `dataset` – paths to example O- and P-streams (O-streams may be `.npz`, `.json`, or `.csv`)
 * `calibration` – per-channel calibration coefficients
 * `adapter` – parameters for signal adapters
 * `viz` – options for plotting

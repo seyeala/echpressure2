@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Any
+import csv
 import json
 
 import numpy as np
@@ -28,11 +29,13 @@ class OStream:
 def load_ostream(path: str | Path) -> OStream:
     """Load an O-stream file.
 
-    The loader understands two simple file formats:
+    The loader understands three simple file formats:
 
     - ``.npz`` archives containing ``session_id``, ``timestamps`` and
       ``channels`` arrays, plus optional additional metadata arrays.
     - JSON files with the same keys.
+    - CSV files with a header row including ``session_id`` and ``timestamp``
+      columns followed by one column per channel.
 
     Additional arrays or key/value pairs are preserved in the ``meta``
     dictionary of the returned :class:`OStream` instance.
@@ -63,6 +66,36 @@ def load_ostream(path: str | Path) -> OStream:
             for key, value in obj.items()
             if key not in {"session_id", "timestamps", "channels"}
         }
-        return OStream(session_id=session_id, timestamps=timestamps, channels=channels, meta=meta)
+        return OStream(
+            session_id=session_id,
+            timestamps=timestamps,
+            channels=channels,
+            meta=meta,
+        )
+
+    if path.suffix == ".csv":
+        with open(path, "r", encoding="utf8", newline="") as fh:
+            reader = csv.DictReader(fh)
+            if reader.fieldnames is None:
+                raise ValueError("CSV file must have a header row")
+            channel_fields = [
+                name for name in reader.fieldnames if name not in {"session_id", "timestamp"}
+            ]
+            timestamps = []
+            channels = []
+            session_id = None
+            for row in reader:
+                if session_id is None:
+                    session_id = row.get("session_id", path.stem)
+                timestamps.append(float(row["timestamp"]))
+                channels.append([float(row[field]) for field in channel_fields])
+        timestamps_arr = np.asarray(timestamps, dtype=float)
+        channels_arr = np.asarray(channels, dtype=float)
+        return OStream(
+            session_id=session_id if session_id is not None else path.stem,
+            timestamps=timestamps_arr,
+            channels=channels_arr,
+            meta={},
+        )
 
     raise ValueError(f"Unsupported O-stream file format: {path.suffix}")
