@@ -11,6 +11,9 @@ configuration in `conf/config.yaml` composes several YAML groups under
 * `adapter` – parameters for signal adapters
 * `viz` – options for plotting
 
+By default, the library operates on channel `3`. Override this with
+`calibration.channel` or the `ECHOPRESS_CHANNEL` environment variable.
+
 Commands in `echopress.cli` are wrapped by ``hydra.main`` so overrides can be
 passed directly on the command line. For example, to adjust calibration
 parameters at runtime:

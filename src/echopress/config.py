@@ -25,7 +25,7 @@ class Settings:
 
     alpha: float = 1.0
     beta: float = 0.0
-    channel: int = 0
+    channel: int = 3
     O_max: float = 0.1
     tie_breaker: str = "earliest"
     W: int = 5
