@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 
+from echopress.config import Settings
 from echopress.core import CalibrationCoefficients, apply_calibration
 
 
@@ -30,3 +31,16 @@ def test_mismatched_coefficient_lengths():
     with pytest.raises(ValueError):
         CalibrationCoefficients(alpha=np.array([1.0, 2.0]),
                                 beta=np.array([0.0]))
+
+
+def test_apply_calibration_with_settings():
+    voltage = np.array([0.0, 1.0])
+    settings = Settings(alpha=2.0, beta=1.0, channel=0)
+    result = apply_calibration(voltage, settings=settings)
+    np.testing.assert_allclose(result, 2.0 * voltage + 1.0)
+
+
+def test_apply_calibration_override():
+    voltage = np.array([0.0, 1.0])
+    result = apply_calibration(voltage, alpha=3.0, beta=-1.0)
+    np.testing.assert_allclose(result, 3.0 * voltage - 1.0)

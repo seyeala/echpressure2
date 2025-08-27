@@ -1,3 +1,3 @@
 """Top-level package for echopress."""
 
-__all__ = ["ingest", "core"]
+__all__ = ["ingest", "core", "config"]
