@@ -25,13 +25,15 @@ def _session_id(path: Path, patterns: Iterable[str] = ()) -> str:
     The stem (basename without extensions) is normalised to lower case so
     lookups are case-insensitive. If the stem starts with any of the
     supplied ``patterns`` (also compared in lower case) the matching prefix is
-    stripped before returning the identifier.
+    stripped before returning the identifier.  If stripping a recognised
+    prefix would yield an empty string, the original stem is returned.
     """
 
     stem = path.stem.lower()
     for prefix in sorted((p.lower() for p in patterns), key=len, reverse=True):
         if stem.startswith(prefix):
-            return stem[len(prefix) :]
+            suffix = stem[len(prefix) :]
+            return suffix or stem
     return stem
 
 
