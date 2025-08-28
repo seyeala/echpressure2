@@ -42,12 +42,13 @@ def _is_pstream_csv(path: Path, patterns: Iterable[str]) -> bool:
     if path.suffix.lower() != ".csv":
         return False
     stem = path.stem
+    stem_lower = stem.lower()
     for pattern in patterns:
         try:
-            if re.search(pattern, stem, flags=re.IGNORECASE):
+            if re.match(pattern, stem, flags=re.IGNORECASE):
                 return True
         except re.error:
-            if pattern.lower() in stem.lower():
+            if stem_lower.startswith(pattern.lower()):
                 return True
     return False
 
