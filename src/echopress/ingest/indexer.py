@@ -18,13 +18,20 @@ PSTREAM_EXTENSIONS = {".pstream", ".p", ".ps"}
 OSTREAM_EXTENSIONS = {".ostream", ".o", ".os", ".npz", ".json", ".csv"}
 
 
-def _session_id(path: Path) -> str:
+def _session_id(path: Path, patterns: Iterable[str] = ()) -> str:
     """Derive a session identifier from ``path``.
 
-    The default strategy uses the stem (basename without extensions)
-    and normalizes it to lower case so lookups are case-insensitive.
+    The stem (basename without extensions) is normalised to lower case so
+    lookups are case-insensitive. If the stem starts with any of the
+    supplied ``patterns`` (also compared in lower case) the matching prefix is
+    stripped before returning the identifier.
     """
-    return path.stem.lower()
+
+    stem = path.stem.lower()
+    for prefix in sorted((p.lower() for p in patterns), key=len, reverse=True):
+        if stem.startswith(prefix):
+            return stem[len(prefix) :]
+    return stem
 
 
 def _is_pstream_csv(path: Path, patterns: Iterable[str]) -> bool:
@@ -57,10 +64,11 @@ class DatasetIndexer:
         for path in self.root.rglob("*"):
             if not path.is_file():
                 continue
-            sid = _session_id(path)
             if _is_pstream_csv(path, self.settings.pstream_csv_patterns):
+                sid = _session_id(path, self.settings.pstream_csv_patterns)
                 self.pstreams.setdefault(sid, []).append(path)
                 continue
+            sid = _session_id(path)
             suffix = path.suffix.lower()
             if suffix in PSTREAM_EXTENSIONS:
                 self.pstreams.setdefault(sid, []).append(path)
