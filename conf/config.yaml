@@ -1,5 +1,6 @@
 defaults:
   - dataset: default
+  - ingest: default
   - mapping: default
   - calibration: default
   - pressure: default

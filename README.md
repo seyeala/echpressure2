@@ -73,6 +73,7 @@ configuration in `conf/config.yaml` composes several YAML groups under `conf/`,
 including:
 
 * `dataset` – paths to example O- and P-streams (O-streams may be `.npz`, `.json`, or `.csv`)
+* `ingest` – patterns to recognise P-stream CSV files (default `['voltprsr']`)
 * `mapping` – alignment and derivative parameters
 * `calibration` – per-channel calibration coefficients
 * `pressure` – which channel contains scalar pressure data
