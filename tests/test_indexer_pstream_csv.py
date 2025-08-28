@@ -23,14 +23,16 @@ def test_dataset_indexer_picks_up_multiple_patterns(tmp_path):
     indexer = DatasetIndexer(tmp_path, settings=settings)
     assert "voltprsr001" in indexer.pstreams
     assert "anotherpstream002" in indexer.pstreams
-    assert "sessiona" in indexer.ostreams
-    assert "sessiona" not in indexer.pstreams
+    assert "sessionA" in indexer.ostreams
+    assert "sessionA" not in indexer.pstreams
 
 
 def test_dataset_indexer_lookup_by_full_id(tmp_path):
     csv_path = tmp_path / "VoltPrsr001.csv"
     csv_path.write_text("timestamp\n0.0\n")
     indexer = DatasetIndexer(tmp_path)
+    assert "VoltPrsr001" in indexer.pstreams
+    assert indexer.get_pstreams("VoltPrsr001") == [csv_path]
     assert indexer.get_pstreams("voltprsr001") == [csv_path]
 
 
@@ -40,8 +42,8 @@ def test_dataset_indexer_accepts_regex_patterns(tmp_path):
     settings = Settings()
     settings.ingest.pstream_csv_patterns = [r"voltprsr\d+"]
     indexer = DatasetIndexer(tmp_path, settings=settings)
-    assert "voltprsr123" in indexer.pstreams
-    assert csv_path in indexer.pstreams["voltprsr123"]
+    assert "VoltPrsr123" in indexer.pstreams
+    assert csv_path in indexer.pstreams["VoltPrsr123"]
 
 
 def test_dataset_indexer_handles_prefix_only(tmp_path):

@@ -20,5 +20,7 @@ def test_dataset_indexer_picks_up_csv(tmp_path):
     csv_path = tmp_path / "sessionA.csv"
     csv_path.write_text("session_id,timestamp,ch0\nsessionA,0.0,1.0\n")
     indexer = DatasetIndexer(tmp_path)
-    assert "sessiona" in indexer.ostreams
-    assert csv_path in indexer.ostreams["sessiona"]
+    assert "sessionA" in indexer.ostreams
+    assert csv_path in indexer.ostreams["sessionA"]
+    assert indexer.get_ostreams("sessionA") == [csv_path]
+    assert indexer.get_ostreams("SESSIONA") == [csv_path]
