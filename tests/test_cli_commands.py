@@ -56,7 +56,7 @@ def test_index_align_adapt(tmp_path):
     assert result.exit_code == 0
     data = json.loads(cache_path.read_text())
     assert "s1" in data["ostreams"]
-    assert "001" in data["pstreams"]
+    assert "voltprsr001" in data["pstreams"]
 
     result = runner.invoke(app, ["align", "--export", str(align_path)], obj=cfg)
     assert result.exit_code == 0

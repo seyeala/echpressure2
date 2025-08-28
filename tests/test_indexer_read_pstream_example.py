@@ -9,9 +9,9 @@ def test_indexer_finds_and_reads_voltprsr_example(tmp_path):
     file.write_text(data)
 
     indexer = DatasetIndexer(tmp_path)
-    assert "_example" in indexer.pstreams
+    assert "voltprsr_example" in indexer.pstreams
 
-    indexed_file = indexer.first_pstream("_example")
+    indexed_file = indexer.first_pstream("voltprsr_example")
     assert indexed_file == file
 
     records = list(read_pstream(indexed_file))

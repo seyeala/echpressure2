@@ -6,9 +6,10 @@ def test_dataset_indexer_picks_up_voltprsr_csv(tmp_path):
     csv_path = tmp_path / "voltprsr001.csv"
     csv_path.write_text("timestamp\n0.0\n")
     indexer = DatasetIndexer(tmp_path)
-    assert "001" in indexer.pstreams
-    assert csv_path in indexer.pstreams["001"]
-    assert "001" not in indexer.ostreams
+    sid = "voltprsr001"
+    assert sid in indexer.pstreams
+    assert csv_path in indexer.pstreams[sid]
+    assert sid not in indexer.ostreams
 
 
 def test_dataset_indexer_picks_up_multiple_patterns(tmp_path):
@@ -20,17 +21,17 @@ def test_dataset_indexer_picks_up_multiple_patterns(tmp_path):
     settings = Settings()
     settings.ingest.pstream_csv_patterns = ["voltprsr", "anotherpstream"]
     indexer = DatasetIndexer(tmp_path, settings=settings)
-    assert "001" in indexer.pstreams
-    assert "002" in indexer.pstreams
+    assert "voltprsr001" in indexer.pstreams
+    assert "anotherpstream002" in indexer.pstreams
     assert "sessiona" in indexer.ostreams
     assert "sessiona" not in indexer.pstreams
 
 
-def test_dataset_indexer_lookup_by_stripped_id(tmp_path):
+def test_dataset_indexer_lookup_by_full_id(tmp_path):
     csv_path = tmp_path / "VoltPrsr001.csv"
     csv_path.write_text("timestamp\n0.0\n")
     indexer = DatasetIndexer(tmp_path)
-    assert indexer.get_pstreams("001") == [csv_path]
+    assert indexer.get_pstreams("voltprsr001") == [csv_path]
 
 
 def test_dataset_indexer_accepts_regex_patterns(tmp_path):

@@ -75,7 +75,7 @@ class DatasetIndexer:
             if not path.is_file():
                 continue
             if _is_pstream_csv(path, self.settings.ingest.pstream_csv_patterns):
-                sid = _session_id(path, self.settings.ingest.pstream_csv_patterns)
+                sid = path.stem.lower()
                 self.pstreams.setdefault(sid, []).append(path)
                 continue
             sid = _session_id(path)
