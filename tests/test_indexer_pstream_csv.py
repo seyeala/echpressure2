@@ -52,3 +52,25 @@ def test_dataset_indexer_handles_prefix_only(tmp_path):
     assert "voltprsr" in indexer.pstreams
     assert csv_path in indexer.pstreams["voltprsr"]
 
+
+def test_dataset_indexer_ignores_voltprsr_in_middle(tmp_path):
+    csv_path = tmp_path / "foo_voltprsr001.csv"
+    csv_path.write_text("timestamp\n0.0\n")
+    indexer = DatasetIndexer(tmp_path)
+    sid = "foo_voltprsr001"
+    assert sid not in indexer.pstreams
+    assert sid in indexer.ostreams
+    assert csv_path in indexer.ostreams[sid]
+
+
+def test_dataset_indexer_ignores_voltprsr_in_middle_with_regex(tmp_path):
+    csv_path = tmp_path / "foo_voltprsr123.csv"
+    csv_path.write_text("timestamp\n0.0\n")
+    settings = Settings()
+    settings.ingest.pstream_csv_patterns = [r"voltprsr\d+"]
+    indexer = DatasetIndexer(tmp_path, settings=settings)
+    sid = "foo_voltprsr123"
+    assert sid not in indexer.pstreams
+    assert sid in indexer.ostreams
+    assert csv_path in indexer.ostreams[sid]
+
