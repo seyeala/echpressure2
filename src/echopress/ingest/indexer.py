@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional
+import re
 
 from ..config import Settings
 
@@ -38,8 +39,15 @@ def _is_pstream_csv(path: Path, patterns: Iterable[str]) -> bool:
     """Return ``True`` if ``path`` matches a configured P-stream CSV pattern."""
     if path.suffix.lower() != ".csv":
         return False
-    stem = path.stem.lower()
-    return any(p.lower() in stem for p in patterns)
+    stem = path.stem
+    for pattern in patterns:
+        try:
+            if re.search(pattern, stem, flags=re.IGNORECASE):
+                return True
+        except re.error:
+            if pattern.lower() in stem.lower():
+                return True
+    return False
 
 
 @dataclass
@@ -64,8 +72,8 @@ class DatasetIndexer:
         for path in self.root.rglob("*"):
             if not path.is_file():
                 continue
-            if _is_pstream_csv(path, self.settings.pstream_csv_patterns):
-                sid = _session_id(path, self.settings.pstream_csv_patterns)
+            if _is_pstream_csv(path, self.settings.ingest.pstream_csv_patterns):
+                sid = _session_id(path, self.settings.ingest.pstream_csv_patterns)
                 self.pstreams.setdefault(sid, []).append(path)
                 continue
             sid = _session_id(path)

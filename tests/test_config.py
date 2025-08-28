@@ -10,6 +10,12 @@ def test_from_env(monkeypatch):
     assert s.calibration.alpha[0] == 2.5
 
 
+def test_from_env_ingest_patterns(monkeypatch):
+    monkeypatch.setenv("ECHOPRESS_INGEST_PSTREAM_CSV_PATTERNS", "foo,bar")
+    s = Settings.from_env()
+    assert s.ingest.pstream_csv_patterns == ["foo", "bar"]
+
+
 def test_load_settings_json(tmp_path):
     p = tmp_path / "cfg.json"
     p.write_text(json.dumps({"calibration": {"beta": [1.2]}, "mapping": {"W": 7}}))

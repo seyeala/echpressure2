@@ -1,0 +1,5 @@
+# Patterns identifying CSV files containing P-stream data. Each entry may be
+# a simple substring or a regular expression.
+pstream_csv_patterns:
+  - voltprsr
+

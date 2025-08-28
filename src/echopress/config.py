@@ -80,6 +80,15 @@ class QualitySettings:
 
 
 @dataclass
+class IngestSettings:
+    """Options controlling dataset ingestion."""
+
+    pstream_csv_patterns: list[str] = field(
+        default_factory=lambda: ["voltprsr"]
+    )
+
+
+@dataclass
 class Settings:
     """Container for all runtime configuration sections."""
 
@@ -89,9 +98,7 @@ class Settings:
     units: UnitsSettings = field(default_factory=UnitsSettings)
     timestamp: TimestampSettings = field(default_factory=TimestampSettings)
     quality: QualitySettings = field(default_factory=QualitySettings)
-    pstream_csv_patterns: list[str] = field(
-        default_factory=lambda: ["voltprsr"]
-    )
+    ingest: IngestSettings = field(default_factory=IngestSettings)
 
     # ------------------------------------------------------------------
     # Helpers
@@ -128,8 +135,8 @@ class Settings:
             "timestamp.format": ("ECHOPRESS_TIMESTAMP_FORMAT", str),
             "timestamp.timezone": ("ECHOPRESS_TIMESTAMP_TIMEZONE", str),
             "timestamp.year_fallback": ("ECHOPRESS_TIMESTAMP_YEAR_FALLBACK", int),
-            "pstream_csv_patterns": (
-                "ECHOPRESS_PSTREAM_CSV_PATTERNS",
+            "ingest.pstream_csv_patterns": (
+                "ECHOPRESS_INGEST_PSTREAM_CSV_PATTERNS",
                 lambda v: [s.strip() for s in v.split(",") if s.strip()],
             ),
         }
