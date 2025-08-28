@@ -22,16 +22,15 @@ OSTREAM_EXTENSIONS = {".ostream", ".o", ".os", ".npz", ".json", ".csv"}
 def _session_id(path: Path, patterns: Iterable[str] = ()) -> str:
     """Derive a session identifier from ``path``.
 
-    The stem (basename without extensions) is normalised to lower case so
-    lookups are case-insensitive. If the stem starts with any of the
-    supplied ``patterns`` (also compared in lower case) the matching prefix is
-    stripped before returning the identifier.  If stripping a recognised
-    prefix would yield an empty string, the original stem is returned.
+    The filename stem is compared against ``patterns`` in a case-insensitive
+    manner.  Any matching prefix is stripped while preserving the original
+    casing of the remaining characters.
     """
 
-    stem = path.stem.lower()
+    stem = path.stem
+    stem_lower = stem.lower()
     for prefix in sorted((p.lower() for p in patterns), key=len, reverse=True):
-        if stem.startswith(prefix):
+        if stem_lower.startswith(prefix):
             suffix = stem[len(prefix) :]
             return suffix or stem
     return stem
@@ -61,6 +60,8 @@ class DatasetIndexer:
     pstreams: Dict[str, List[Path]] = field(default_factory=dict)
     ostreams: Dict[str, List[Path]] = field(default_factory=dict)
     settings: Settings = field(default_factory=Settings)
+    _pstream_keys: Dict[str, str] = field(default_factory=dict, init=False, repr=False)
+    _ostream_keys: Dict[str, str] = field(default_factory=dict, init=False, repr=False)
 
     def __post_init__(self) -> None:
         self.root = Path(self.root)
@@ -71,20 +72,25 @@ class DatasetIndexer:
         """Walk the dataset tree and populate the registries."""
         self.pstreams.clear()
         self.ostreams.clear()
+        self._pstream_keys.clear()
+        self._ostream_keys.clear()
 
         for path in self.root.rglob("*"):
             if not path.is_file():
                 continue
             if _is_pstream_csv(path, self.settings.ingest.pstream_csv_patterns):
-                sid = path.stem.lower()
+                sid = path.stem
                 self.pstreams.setdefault(sid, []).append(path)
+                self._pstream_keys.setdefault(sid.lower(), sid)
                 continue
             sid = _session_id(path)
             suffix = path.suffix.lower()
             if suffix in PSTREAM_EXTENSIONS:
                 self.pstreams.setdefault(sid, []).append(path)
+                self._pstream_keys.setdefault(sid.lower(), sid)
             elif suffix in OSTREAM_EXTENSIONS:
                 self.ostreams.setdefault(sid, []).append(path)
+                self._ostream_keys.setdefault(sid.lower(), sid)
 
     # ------------------------------------------------------------------
     def sessions(self) -> List[str]:
@@ -93,11 +99,13 @@ class DatasetIndexer:
 
     def get_pstreams(self, session_id: str) -> List[Path]:
         """Return P-stream files for ``session_id`` (possibly empty)."""
-        return self.pstreams.get(session_id.lower(), [])
+        key = self._pstream_keys.get(session_id.lower())
+        return self.pstreams.get(key, []) if key is not None else []
 
     def get_ostreams(self, session_id: str) -> List[Path]:
         """Return O-stream files for ``session_id`` (possibly empty)."""
-        return self.ostreams.get(session_id.lower(), [])
+        key = self._ostream_keys.get(session_id.lower())
+        return self.ostreams.get(key, []) if key is not None else []
 
     def first_pstream(self, session_id: str) -> Optional[Path]:
         """Convenience method returning the first P-stream file for a session."""
