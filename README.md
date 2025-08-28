@@ -52,13 +52,15 @@ utils/ & types.py  shared utilities and data types
 
 ## Usage
 
-Once the CLI exposes the full pipeline, a typical flow looks like:
+Once the CLI exposes the full pipeline, a typical flow looks like below.
+Commands accept traditional `.pstream` text files or `voltprsr*.csv`
+P-streams:
 
 ```bash
-# Build dataset indices from configured paths
+# Build dataset indices from configured paths (supports .pstream and CSV)
 python -m echopress.cli index
 
-# Align O-stream files to the P-stream and compute uncertainty bounds
+# Align O-stream files to the P-stream (.pstream or CSV) and compute uncertainty bounds
 python -m echopress.cli align
 
 # Run an adapter on files within a pressure range and save features

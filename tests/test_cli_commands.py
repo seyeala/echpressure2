@@ -14,8 +14,8 @@ def make_cfg(tmp_path):
         timestamps=np.array([0.0, 1.0, 2.0]),
         channels=np.array([1.0, 2.0, 3.0]),
     )
-    p_path = tmp_path / "s1.pstream"
-    p_path.write_text("\n".join(["0 0 0 10", "1 0 0 11", "2 0 0 12"]))
+    p_path = tmp_path / "voltprsr001.csv"
+    p_path.write_text("timestamp,pressure\n0,10\n1,11\n2,12\n")
     align_path = tmp_path / "align.json"
     cfg = OmegaConf.create(
         {
@@ -56,6 +56,7 @@ def test_index_align_adapt(tmp_path):
     assert result.exit_code == 0
     data = json.loads(cache_path.read_text())
     assert "s1" in data["ostreams"]
+    assert "001" in data["pstreams"]
 
     result = runner.invoke(app, ["align", "--export", str(align_path)], obj=cfg)
     assert result.exit_code == 0
