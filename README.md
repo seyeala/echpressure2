@@ -10,8 +10,9 @@ formalised in `theory.pdf`.
 
 `echpressure2` ingests two unsynchronised data streams:
 
-- **P-stream** – timestamped pressure measurements expressed in millimetres of
-  mercury (mmHg).
+ - **P-stream** – timestamped pressure measurements expressed in millimetres of
+  mercury (mmHg). P-stream CSVs are conventionally named `voltprsr{ID}.csv`
+  and contain `timestamp,pressure` columns.
 - **O-stream** – oscilloscope files containing uniformly sampled waveforms.
 
 Each O-stream file is mapped to the nearest P-stream timestamp, calibrated and
@@ -66,6 +67,23 @@ python -m echopress.cli adapt --adapter cec --pr-min 80 --pr-max 120 --n 5 --out
 
 Existing commands such as `ingest`, `calibrate` and `viz` remain available.
 
+### P-stream CSVs
+
+Files like `voltprsr001.csv` hold `timestamp,pressure` pairs. The
+`DatasetIndexer` recognises the `voltprsr` prefix by default and indexes the
+trailing identifier. `read_pstream` loads these CSVs and yields
+`PStreamRecord` objects with parsed timestamps and floating-point pressures.
+
+```python
+from echopress.ingest import DatasetIndexer, read_pstream
+
+# Find and read the first P-stream with ID "001"
+indexer = DatasetIndexer("/data")
+pstream_path = indexer.first_pstream("001")
+for record in read_pstream(pstream_path):
+    print(record.timestamp, record.pressure)
+```
+
 ## Configuration
 
 Runtime configuration is managed with [Hydra](https://hydra.cc). The default
@@ -73,7 +91,8 @@ configuration in `conf/config.yaml` composes several YAML groups under `conf/`,
 including:
 
 * `dataset` – paths to example O- and P-streams (O-streams may be `.npz`, `.json`, or `.csv`)
-* `ingest` – patterns to recognise P-stream CSV files (default `['voltprsr']`)
+* `ingest` – patterns to recognise P-stream CSV files (default `['voltprsr']`,
+  matching names like `voltprsr*.csv`)
 * `mapping` – alignment and derivative parameters
 * `calibration` – per-channel calibration coefficients
 * `pressure` – which channel contains scalar pressure data

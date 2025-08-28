@@ -1,6 +1,7 @@
 site_name: Echpressure
 nav:
   - Architecture: architecture.md
+  - P-streams: pstream.md
   - Adapters:
       - CEC: adapters/cec.md
       - DTW-TA: adapters/dtw_ta.md
