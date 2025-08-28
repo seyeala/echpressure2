@@ -42,3 +42,12 @@ def test_dataset_indexer_accepts_regex_patterns(tmp_path):
     assert "voltprsr123" in indexer.pstreams
     assert csv_path in indexer.pstreams["voltprsr123"]
 
+
+def test_dataset_indexer_handles_prefix_only(tmp_path):
+    csv_path = tmp_path / "voltprsr.csv"
+    csv_path.write_text("timestamp\n0.0\n")
+    indexer = DatasetIndexer(tmp_path)
+    assert "" not in indexer.pstreams
+    assert "voltprsr" in indexer.pstreams
+    assert csv_path in indexer.pstreams["voltprsr"]
+
