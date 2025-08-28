@@ -21,9 +21,10 @@ OSTREAM_EXTENSIONS = {".ostream", ".o", ".os", ".npz", ".json", ".csv"}
 def _session_id(path: Path) -> str:
     """Derive a session identifier from ``path``.
 
-    The default strategy uses the stem (basename without extensions).
+    The default strategy uses the stem (basename without extensions)
+    and normalizes it to lower case so lookups are case-insensitive.
     """
-    return path.stem
+    return path.stem.lower()
 
 
 def _is_pstream_csv(path: Path, patterns: Iterable[str]) -> bool:
@@ -73,11 +74,11 @@ class DatasetIndexer:
 
     def get_pstreams(self, session_id: str) -> List[Path]:
         """Return P-stream files for ``session_id`` (possibly empty)."""
-        return self.pstreams.get(session_id, [])
+        return self.pstreams.get(session_id.lower(), [])
 
     def get_ostreams(self, session_id: str) -> List[Path]:
         """Return O-stream files for ``session_id`` (possibly empty)."""
-        return self.ostreams.get(session_id, [])
+        return self.ostreams.get(session_id.lower(), [])
 
     def first_pstream(self, session_id: str) -> Optional[Path]:
         """Convenience method returning the first P-stream file for a session."""
