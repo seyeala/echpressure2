@@ -174,6 +174,13 @@ def read_pstream(
             tz = ZoneInfo(settings.timestamp.timezone)
             with open(p, newline="", encoding="utf8") as fh:
                 reader = csv.DictReader(fh)
+                required = {"timestamp", "pressure"}
+                if reader.fieldnames is None or not required.issubset(reader.fieldnames):
+                    found = reader.fieldnames if reader.fieldnames is not None else []
+                    raise ValueError(
+                        "CSV P-stream header must contain 'timestamp' and 'pressure' columns; "
+                        f"found {found}"
+                    )
                 for row in reader:
                     ts_val = row.get("timestamp")
                     p_val = row.get("pressure")
