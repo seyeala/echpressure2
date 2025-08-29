@@ -1,4 +1,4 @@
 tie_breaker: earliest
-O_max: 0.1
 W: 5
-kappa: 1.0
+O_max: 0.0001
+kappa: 3
