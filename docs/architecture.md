@@ -5,7 +5,7 @@ Echpressure processes two unsynchronized data streams: a pressure stream (P-stre
 Alignment enforces a maximum allowable error ``O_max``. If the midpoint lies farther than this threshold from all P-stream timestamps, the file is rejected by default and marked in diagnostics. Setting ``reject_if_Ealign_gt_Omax=False`` retains the mapping but records the offending indices under ``E_align_violations``.
 
 ## Pipeline
-1. **Ingestion & Indexing** – Resolve dataset paths, parse file and record metadata, and build in-memory tables for fast lookup.
+1. **Ingestion & Indexing** – Resolve dataset paths, parse file and record metadata, and build in-memory tables for fast lookup. See [Dataset Indexer](dataset_indexer.md) for session lookup rules and pattern matching.
 2. **Calibration & Mapping** – Convert voltages to calibrated pressure values and compute midpoint alignment, keeping track of error bounds.
 3. **Adapters Layer 1** – Cycle-synchronous mappings such as PB-CSA, PLSTN, HMV, CEC, DTW-TA and MTP transform waveforms into fixed-length, shift-invariant representations.
 4. **Adapters Layer 2** – Transforms applied to mapped cycles including Fourier spectrum, Hilbert-envelope, wavelet energies and MFCC features.
