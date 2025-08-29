@@ -15,6 +15,8 @@ optional lazy/batched loading for large corpora.
 • Framework-agnostic outputs (NumPy-first), ready for PyTorch/TF dataset wrappers at a
 later stage.
 • Hydra-driven configuration via YAML (hierarchical, overrideable).
+• Window-mode O-stream parsing for fixed-duration windows.
+• Configurable P-stream CSV patterns for flexible record layouts.
 • Extremely modular adapters: each in its own folder with adapter.py, adapter.yml,
 README.md (math + references), and tests/.
 • Visualization: quick CLI flags to plot raw/processed/adapter outputs (e.g., random samples at given pressure ranges) or return NumPy arrays.
