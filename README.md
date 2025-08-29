@@ -73,7 +73,7 @@ Existing commands such as `ingest`, `calibrate` and `viz` remain available.
 
 Files like `voltprsr001.csv` hold `timestamp,pressure` pairs. The
 `DatasetIndexer` recognises the `voltprsr` prefix by default and indexes the
-trailing identifier. `read_pstream` loads these CSVs and yields
+trailing identifier. See [docs/dataset_indexer.md](docs/dataset_indexer.md) for session handling, case-insensitive lookups and pattern matching. `read_pstream` loads these CSVs and yields
 `PStreamRecord` objects with parsed timestamps and floating-point pressures.
 
 ```python
