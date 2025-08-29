@@ -1,0 +1,15 @@
+{
+  "name": "echpressure2 (Codespaces)",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12",
+  "hostRequirements": { "cpus": 4, "memory": "8gb", "storage": "32gb" },
+  "onCreateCommand": "pip install -U pip",
+  "postCreateCommand": "pip install -e . && pip install pytest numpy pyyaml",
+  "postStartCommand": "pytest -q || true",
+  "forwardPorts": [8888],
+  "customizations": {
+    "vscode": {
+      "settings": { "python.testing.pytestEnabled": true, "python.testing.pytestArgs": ["tests"] },
+      "extensions": ["ms-python.python","ms-toolsai.jupyter","charliermarsh.ruff"]
+    }
+  }
+}
