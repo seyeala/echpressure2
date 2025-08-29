@@ -53,6 +53,8 @@ v (3)
 
 (in volts).
 
+In addition to this paired-line layout, P-stream ingestion also accepts single-line records and CSV rows that place the timestamp and voltages on one line.
+
 For k ∈ {1, 2, 3}, linear calibration is
 p(k) = αk v (k) + βk .
 The canonical scalar pressure is only channel 3 :
