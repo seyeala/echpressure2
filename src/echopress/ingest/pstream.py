@@ -1,205 +1,153 @@
-"""Parser for P-stream files.
+# src/echopress/ingest/pstream.py
+"""Parser for P-stream files (paired-line friendly).
 
-P-streams provide sequences of pressure measurements ``p`` together with
-associated timestamps ``T^P``.  The :func:`read_pstream` generator yields
-records as :class:`PStreamRecord` objects.
+Supports:
+A) Paired lines:
+   M..-D..-H..-M..-S..-U.xxx
+   v1,v2,v3            (or space-separated)
+   -> choose 'value_col' (default 2 → third number) as pressure
+
+B) Simple one-line:
+   <timestamp> <pressure>
+   <timestamp>,<pressure>
+
+C) CSV with header:
+   timestamp,pressure
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from zoneinfo import ZoneInfo
-from typing import Iterator, Union, TextIO, Sequence
-import csv
+from typing import Iterator, Union, TextIO, Optional
 import pathlib
 import re
+import csv
 
-import numpy as np
-
-from ..config import Settings
-
-# Regular expression recognising the timestamp grammar.  The grammar is
-# intentionally permissive in order to interoperate with a variety of
-# datasets.  It accepts ISO-8601 strings, ``HH:MM:SS`` strings,
-# ``Mxx-Dxx-Hxx-Mxx-Sxx-U.xxx`` strings and plain floating point seconds
-# since the Unix epoch.
+# Timestamp grammar (ISO / HH:MM:SS / float epoch / M..-D..-H..-M..-S..-U.xxx)
 TIMESTAMP_RE = re.compile(
-    r"""^\s*
-        (?:
+    r"""^\s*(?:
             (?P<iso>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?)
-            |
-            (?P<hms>\d{2}:\d{2}:\d{2}(?:\.\d+)?)
-            |
-            (?P<float>\d+(?:\.\d+)?)
-            |
-            M(?P<month>\d{2})-D(?P<day>\d{2})-H(?P<hour>\d{2})-M(?P<minute>\d{2})-S(?P<second>\d{2})-U(?:\.(?P<subsecond>\d+))?
-        )
-        \s*$""",
+          | (?P<hms>\d{2}:\d{2}:\d{2}(?:\.\d+)?)
+          | (?P<float>\d+(?:\.\d+)?)
+          | (?P<mdhmsu>M(?P<mon>\d{2})-D(?P<day>\d{2})-H(?P<hour>\d{2})-M(?P<minute>\d{2})-S(?P<sec>\d{2})-U\.(?P<u>\d{3}))
+        )\s*$""",
     re.VERBOSE,
 )
 
-
-def parse_timestamp(token: str, *, settings: Settings | None = None) -> datetime:
-    """Parse a timestamp token using ``settings.timestamp`` controls."""
-
-    if settings is None:
-        settings = Settings()
-
-    ts_cfg = settings.timestamp
-    tz = ZoneInfo(ts_cfg.timezone)
-
-    if ts_cfg.format:
-        try:
-            dt = datetime.strptime(token, ts_cfg.format)
-            return dt.replace(tzinfo=tz)
-        except ValueError:
-            pass
-
+def parse_timestamp(token: str) -> datetime:
     m = TIMESTAMP_RE.match(token)
     if not m:
         raise ValueError(f"Unrecognised timestamp: {token!r}")
 
     if m.group("iso"):
-        iso = m.group("iso").replace("Z", "+00:00")
-        dt = datetime.fromisoformat(iso)
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=tz)
-        return dt
-
+        return datetime.fromisoformat(m.group("iso").replace("Z", "+00:00"))
     if m.group("hms"):
         fmt = "%H:%M:%S.%f" if "." in m.group("hms") else "%H:%M:%S"
-        today = datetime.now(tz).date()
-        date = today.replace(year=ts_cfg.year_fallback)
-        return datetime.combine(
-            date,
-            datetime.strptime(m.group("hms"), fmt).time(),
-            tzinfo=tz,
-        )
-
+        today = datetime.now(timezone.utc).date()
+        return datetime.combine(today, datetime.strptime(m.group("hms"), fmt).time(), tzinfo=timezone.utc)
     if m.group("float"):
-        return datetime.fromtimestamp(float(m.group("float")), tz=tz)
+        return datetime.fromtimestamp(float(m.group("float")), tz=timezone.utc)
+    if m.group("mdhmsu"):
+        year = datetime.now(timezone.utc).year
+        mon, day = int(m.group("mon")), int(m.group("day"))
+        hour, minute, sec = int(m.group("hour")), int(m.group("minute")), int(m.group("sec"))
+        micro = int(m.group("u")) * 1000
+        return datetime(year, mon, day, hour, minute, sec, micro, tzinfo=timezone.utc)
 
-    sub = m.group("subsecond") or ""
-    microsecond = int((sub + "000000")[:6])
-    return datetime(
-        ts_cfg.year_fallback,
-        int(m.group("month")),
-        int(m.group("day")),
-        int(m.group("hour")),
-        int(m.group("minute")),
-        int(m.group("second")),
-        microsecond,
-        tzinfo=tz,
-    )
+    raise ValueError(f"Unsupported timestamp: {token!r}")
 
 
 @dataclass
 class PStreamRecord:
-    """Representation of a single P-stream record."""
-
     timestamp: datetime
     pressure: float
-    voltages: tuple[float, float, float] | None = None
 
 
-def _parse_line(
-    line: str,
-    alpha: Sequence[float],
-    beta: Sequence[float],
-    settings: Settings,
-) -> PStreamRecord | None:
+def _parse_values_line(line: str, *, col: int = 2) -> float:
+    parts = [t for t in re.split(r"[,\s]+", line.strip()) if t]
+    if not parts:
+        raise ValueError("Empty values line in P-stream")
+    if col >= len(parts):
+        raise ValueError(f"P-stream values line has {len(parts)} columns; requested col {col}")
+    return float(parts[col])
+
+
+def _parse_simple_line(line: str) -> Optional[PStreamRecord]:
     line = line.strip()
     if not line or line.startswith("#"):
         return None
+    parts = [t for t in re.split(r"[,\s]+", line) if t]
+    if len(parts) >= 2:
+        ts = parse_timestamp(parts[0])
+        val = float(parts[1])
+        return PStreamRecord(ts, val)
+    return None
 
-    if "," in line:
-        parts = [t.strip() for t in line.split(",")]
-    else:
-        parts = line.split()
 
-    if len(parts) < 2:
-        raise ValueError(
-            "Expected timestamp and pressure or timestamp followed by three voltage columns"
-        )
+def _read_pstream_text(fh: TextIO, *, value_col: int) -> Iterator[PStreamRecord]:
+    pending_ts: Optional[datetime] = None
+    for raw in fh:
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        # Timestamp line?
+        m = TIMESTAMP_RE.match(line)
+        if m:
+            pending_ts = parse_timestamp(line)
+            continue
 
-    ts_str = parts[0]
-    timestamp = parse_timestamp(ts_str, settings=settings)
-
-    if len(parts) >= 4:
-        v1_str, v2_str, v3_str = parts[1:4]
-        voltages = (float(v1_str), float(v2_str), float(v3_str))
-
-        alpha_arr = np.asarray(alpha, dtype=float)
-        beta_arr = np.asarray(beta, dtype=float)
-        pressures = alpha_arr * np.asarray(voltages) + beta_arr
-        ch = settings.pressure.scalar_channel
-        pressure = float(pressures[ch])
-    else:
-        p_str = parts[1]
-        voltages = None
-        pressure = float(p_str)
-
-    return PStreamRecord(timestamp, pressure, voltages)
+        # Values line after a timestamp
+        if pending_ts is not None:
+            yield PStreamRecord(pending_ts, _parse_values_line(line, col=value_col))
+            pending_ts = None
+        else:
+            rec = _parse_simple_line(line)
+            if rec is not None:
+                yield rec
+            else:
+                raise ValueError(f"Unrecognised P-stream line: {line!r}")
 
 
 def read_pstream(
     path: Union[str, pathlib.Path, TextIO],
     *,
-    settings: Settings | None = None,
-    alpha: Sequence[float] | None = None,
-    beta: Sequence[float] | None = None,
+    value_col: int = 2,
 ) -> Iterator[PStreamRecord]:
-    """Yield records from a P-stream file.
-
-    Parameters
-    ----------
-    path:
-        Either a path-like object or a text file object providing lines.
-    alpha, beta:
-        Per-channel calibration coefficients. If omitted an identity
-        calibration is used.
-    """
-    if settings is None:
-        settings = Settings()
-
-    if alpha is None:
-        alpha = settings.calibration.alpha
-    if beta is None:
-        beta = settings.calibration.beta
-
+    """Yield PStreamRecord(timestamp, pressure) from a P-stream source."""
     if isinstance(path, (str, pathlib.Path)):
         p = pathlib.Path(path)
+
+        # Optional CSV with header timestamp,pressure
         if p.suffix.lower() == ".csv":
-            tz = ZoneInfo(settings.timestamp.timezone)
-            with open(p, newline="", encoding="utf8") as fh:
-                reader = csv.DictReader(fh)
-                required = {"timestamp", "pressure"}
-                if reader.fieldnames is None or not required.issubset(reader.fieldnames):
-                    found = reader.fieldnames if reader.fieldnames is not None else []
-                    raise ValueError(
-                        "CSV P-stream header must contain 'timestamp' and 'pressure' columns; "
-                        f"found {found}"
-                    )
-                for row in reader:
-                    ts_val = row.get("timestamp")
-                    p_val = row.get("pressure")
-                    if ts_val is None or p_val is None:
-                        continue
-                    try:
-                        timestamp = parse_timestamp(str(ts_val), settings=settings)
-                    except ValueError:
-                        timestamp = datetime.fromtimestamp(float(ts_val), tz=tz)
-                    pressure = float(p_val)
-                    yield PStreamRecord(timestamp, pressure, None)
-        else:
             with open(p, "r", encoding="utf8") as fh:
+                first_pos = fh.tell()
+                first = ""
                 for line in fh:
-                    record = _parse_line(line, alpha, beta, settings)
-                    if record is not None:
-                        yield record
+                    if line.strip() and not line.lstrip().startswith("#"):
+                        first = line.rstrip("\n")
+                        break
+                fh.seek(first_pos)
+                # Headered CSV case
+                if "," in first and "timestamp" in first and "pressure" in first:
+                    reader = csv.DictReader(fh)
+                    for row in reader:
+                        ts_raw = row["timestamp"]
+                        ts = (datetime.fromtimestamp(float(ts_raw), tz=timezone.utc)
+                              if ts_raw.replace(".", "", 1).isdigit()
+                              else parse_timestamp(ts_raw))
+                        yield PStreamRecord(ts, float(row["pressure"]))
+                    return
+                # Fall back to paired/simple text parsing
+                for rec in _read_pstream_text(fh, value_col=value_col):
+                    yield rec
+            return
+
+        # Plain text file
+        with open(p, "r", encoding="utf8") as fh:
+            for rec in _read_pstream_text(fh, value_col=value_col):
+                yield rec
     else:
-        for line in path:
-            record = _parse_line(line, alpha, beta, settings)
-            if record is not None:
-                yield record
+        # File-like
+        for rec in _read_pstream_text(path, value_col=value_col):
+            yield rec
