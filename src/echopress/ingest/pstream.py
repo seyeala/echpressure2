@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Iterator, Union, TextIO, Optional
+from typing import Iterator, Union, TextIO, Optional, Tuple
 import pathlib
 import re
 import csv
@@ -62,6 +62,7 @@ def parse_timestamp(token: str) -> datetime:
 class PStreamRecord:
     timestamp: datetime
     pressure: float
+    voltages: Optional[Tuple[float, ...]] = None
 
 
 def _parse_values_line(line: str, *, col: int = 2) -> float:

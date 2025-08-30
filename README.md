@@ -60,12 +60,17 @@ P-streams:
 # Build dataset indices from configured paths (supports .pstream and CSV)
 python -m echopress.cli index
 
-# Align O-stream files to the P-stream (.pstream or CSV) and compute uncertainty bounds
-python -m echopress.cli align
+# Align O-stream files to the P-stream using the cached index
+python -m echopress.cli align /data
 
 # Run an adapter on files within a pressure range and save features
 python -m echopress.cli adapt --adapter cec --pr-min 80 --pr-max 120 --n 5 --output features.npy
 ```
+
+The `index` command writes an `index.json` file under the dataset root. The
+`align` step consumes this digest, aligns the first O-/P-stream pair in each
+session and emits a consolidated `align.json` table.  Downstream utilities like
+`adapt` read this table to locate files by pressure value.
 
 Existing commands such as `ingest`, `calibrate` and `viz` remain available.
 
@@ -92,7 +97,7 @@ Runtime configuration is managed with [Hydra](https://hydra.cc). The default
 configuration in `conf/config.yaml` composes several YAML groups under `conf/`,
 including:
 
-* `dataset` – paths to example O- and P-streams (O-streams may be `.npz`, `.json`, or `.csv`)
+* `dataset` – dataset root directory and timestamp metadata
 * `ingest` – patterns to recognise P-stream CSV files (default `['voltprsr']`,
   matching names like `voltprsr*.csv`)
 * `mapping` – alignment and derivative parameters

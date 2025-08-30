@@ -1,14 +1,14 @@
 # src/echopress/ingest/ostream.py
-"""Parser for O-stream files (window-mode default).
+"""Parser for O-stream files with optional window mode.
 
-Default behavior (window_mode=True):
-- Treat each O file as a capture window with absolute start from filename stamp
-  "M..-D..-H..-M..-S..-U.xxx" (year via base_year or current UTC year).
-- Use fixed capture duration (duration_s, default 0.02 s).
-- Return timestamps = [start, start+duration_s], channels = shape (2,0).
-- Alignment midpoint is start + duration_s/2.
+When ``window_mode=True`` the loader treats each file as a capture window with
+start time taken from the filename stamp ``M..-D..-H..-M..-S..-U.xxx`` (year via
+``base_year`` or the current UTC year).  A fixed capture duration
+(``duration_s``) is used and channels are empty.  Alignment midpoint is
+``start + duration_s/2``.
 
-Non-window fallback supports robust CSV/JSON/NPZ parsing if needed.
+With ``window_mode=False`` (the default) the loader parses CSV/JSON/NPZ files
+and returns their timestamps and channels.
 """
 
 from __future__ import annotations
@@ -62,14 +62,14 @@ def _parse_start_from_filename(stem: str, *, base_year: Optional[int]) -> Option
 def load_ostream(
     path: str | Path,
     *,
-    # WINDOW MODE (default)
+    # WINDOW MODE (optional)
     duration_s: float = 0.02,
     base_year: Optional[int] = None,
     use_filename_time: bool = True,
-    window_mode: bool = True,
+    window_mode: bool = False,
     start_time: Optional[float] = None,
     # NON-WINDOW (fallback) options
-    override_file_timestamps: bool = True,
+    override_file_timestamps: bool = False,
     sampling_dt: float = 1.0,
 ) -> OStream:
     """Load an O-stream file (window-mode default, robust fallbacks available)."""
@@ -134,9 +134,7 @@ def load_ostream(
                         ts = np.asarray(vals, dtype=float)
                         vals = []
                     ch = (np.asarray(vals, dtype=float).reshape(n, 1) if vals else np.zeros((n, 0)))
-                    return OStream(stem, ts, ch, {"columns": fns, "mode": "csv_headered_single_col",
-                                                  "sampling_dt": sampling_dt if override_file_timestamps else None,
-                                                  "start_time": file_start})
+                    return OStream(stem, ts, ch, {})
 
                 ts_col: Optional[str] = next((c for c in fns if c in _TS_ALIASES), None)
                 if ts_col is None:
@@ -157,9 +155,7 @@ def load_ostream(
                     ch = np.asarray([[float(r[c]) for c in channel_fields] for r in rows], dtype=float)
                     mode = "csv_headered_multi_col"
 
-                return OStream(session_id, ts, ch, {"columns": fns, "channel_fields": channel_fields,
-                                                    "mode": mode, "sampling_dt": sampling_dt if "override" in mode else None,
-                                                    "start_time": file_start if "override" in mode else None})
+                return OStream(session_id, ts, ch, {})
 
             # Headerless → numeric matrix
             fh.seek(0)
@@ -174,13 +170,11 @@ def load_ostream(
                     if file_start is None:
                         file_start = 0.0
                     ts = file_start + sampling_dt * np.arange(n, dtype=float)
+                    ch = data.astype(float)
                 else:
                     ts = data[:, 0].astype(float)
-                ch = data.astype(float) if override_file_timestamps else np.zeros((n, 0))
-                return OStream(stem, ts, ch if ch.ndim == 2 else ch.reshape(-1, 1),
-                               {"columns": None, "mode": "csv_headerless_single_col",
-                                "sampling_dt": sampling_dt if override_file_timestamps else None,
-                                "start_time": file_start})
+                    ch = np.zeros((n, 0))
+                return OStream(stem, ts, ch if ch.ndim == 2 else ch.reshape(-1, 1), {})
 
             ts = data[:, 0].astype(float)
             ch = data[:, 1:].astype(float)
@@ -189,11 +183,6 @@ def load_ostream(
                 if file_start is None:
                     file_start = 0.0
                 ts = file_start + sampling_dt * np.arange(n, dtype=float)
-                mode = "csv_headerless_multi_col_override"
-            else:
-                mode = "csv_headerless_multi_col"
-            return OStream(stem, ts, ch, {"columns": None, "mode": mode,
-                                          "sampling_dt": sampling_dt if "override" in mode else None,
-                                          "start_time": file_start if "override" in mode else None})
+            return OStream(stem, ts, ch, {})
 
     raise ValueError(f"Unsupported O-stream file format: {path.suffix}")
