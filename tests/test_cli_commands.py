@@ -20,9 +20,7 @@ def make_cfg(tmp_path):
     cfg = OmegaConf.create(
         {
             "dataset": {
-                "root": {"ostream": str(tmp_path), "pstream": str(tmp_path)},
-                "ostream": str(o_path),
-                "pstream": str(p_path),
+                "root": str(tmp_path),
             },
             "mapping": {"tie_breaker": "earliest", "O_max": 2.0, "W": 5, "kappa": 1.0},
             "quality": {"reject_if_Ealign_gt_Omax": True, "min_records_in_W": 1},
@@ -44,11 +42,11 @@ def make_cfg(tmp_path):
             "viz": {},
         }
     )
-    return cfg, o_path, p_path, align_path
+    return cfg, align_path
 
 
 def test_index_align_adapt(tmp_path):
-    cfg, o_path, p_path, align_path = make_cfg(tmp_path)
+    cfg, align_path = make_cfg(tmp_path)
     runner = CliRunner()
 
     cache_path = tmp_path / "index.json"
@@ -58,7 +56,7 @@ def test_index_align_adapt(tmp_path):
     assert "s1" in data["ostreams"]
     assert "voltprsr001" in data["pstreams"]
 
-    result = runner.invoke(app, ["align", "--export", str(align_path)], obj=cfg)
+    result = runner.invoke(app, ["align", str(tmp_path)], obj=cfg)
     assert result.exit_code == 0
     data = json.loads(align_path.read_text())
     assert any("pressure_value" in row for row in data)

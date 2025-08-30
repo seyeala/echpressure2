@@ -1,11 +1,5 @@
-# Root directories for input streams. These can be overridden as needed.
-root:
-  ostream: .
-  pstream: .
-
-# Paths to input streams relative to the roots above.
-ostream: ${dataset.root.ostream}/sample_ostream.npz
-pstream: ${dataset.root.pstream}/sample_pstream.txt
+# Root directory for all input streams. This can be overridden as needed.
+root: .
 
 # Metadata about P-stream timestamps.
 timezone: UTC

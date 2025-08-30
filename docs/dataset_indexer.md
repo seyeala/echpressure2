@@ -24,3 +24,10 @@ indexer.get_ostreams("unknown", fallback=False)  # -> []
 ```
 
 `get_pstreams` and `get_ostreams` accept a `fallback` argument. When `fallback=True` (the default) and a session ID is missing, the indexer returns all files of that type in the project. Setting `fallback=False` yields an empty list instead.
+
+The command-line workflow uses this indexer in two stages.  Running
+`python -m echopress.cli index` writes the index to `index.json` under the
+dataset root.  The `align` command reads this digest, aligns the first
+O-stream/P-stream pair for each session and exports a consolidated
+`align.json` table.  Subsequent commands such as `adapt` consume this table to
+locate files by pressure value.

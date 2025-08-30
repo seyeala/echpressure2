@@ -7,5 +7,5 @@ pr_min: null
 pr_max: null
 n: 1
 plot: false
-align_table: ${dataset.root.ostream}/align.json
+align_table: ${dataset.root}/align.json
 seed: 0

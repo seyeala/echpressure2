@@ -101,64 +101,84 @@ def calibrate(
 @app.command()
 def align(
     ctx: typer.Context,
-    export: Optional[str] = typer.Option(None, "--export", "-e"),
+    root: Path = typer.Argument(..., exists=True, file_okay=False, dir_okay=True),
+    export: Optional[Path] = typer.Option(None, "--export", "-e"),
 ) -> None:
-    """Align O- and P-streams and populate mapping tables."""
+    """Align sessions listed in ``index.json`` under ``root``.
+
+    The command expects an index digest produced by :func:`index`.  When
+    ``index.json`` is missing it is built on the fly.  For each session the
+    first O-stream/P-stream pair is aligned and the resulting tables are
+    consolidated into ``align.json``.
+    """
 
     cfg: DictConfig = ctx.obj
-    ostream = load_ostream(cfg.dataset.ostream)
-    pstream = list(read_pstream(cfg.dataset.pstream))
+    root = Path(root)
 
-    result = align_streams(
-        ostream,
-        pstream,
-        tie_breaker=cfg.mapping.tie_breaker,
-        O_max=cfg.mapping.O_max,
-        W=cfg.mapping.W,
-        kappa=cfg.mapping.kappa,
-        reject_if_Ealign_gt_Omax=cfg.quality.reject_if_Ealign_gt_Omax,
-    )
+    index_path = root / "index.json"
+    if index_path.exists():
+        with open(index_path, "r", encoding="utf8") as fh:
+            index_data: Dict[str, Dict[str, List[str]]] = json.load(fh)
+    else:
+        indexer = DatasetIndexer(root)
+        index_data = {
+            "pstreams": {
+                sid: [str(p) for p in indexer.get_pstreams(sid, fallback=False)]
+                for sid in indexer.sessions()
+            },
+            "ostreams": {
+                sid: [str(o) for o in indexer.get_ostreams(sid, fallback=False)]
+                for sid in indexer.sessions()
+            },
+        }
 
-    sid = ostream.session_id
-    file_path = Path(cfg.dataset.ostream)
-    file_stamp = file_path.stem
+    all_pstreams = [p for paths in index_data.get("pstreams", {}).values() for p in paths]
 
     signals = Signals()
     osc_files = OscFiles()
     fmap = File2PressureMap()
 
-    data = np.asarray(ostream.channels)
-    if data.ndim == 2:
-        data = data[:, 0]
-    data = np.asarray(data).reshape(-1)
-    for idx, value in enumerate(data):
-        signals.add(sid, file_stamp, idx, float(value))
-        osc_files.add(sid, file_stamp, idx, str(file_path))
+    for session, o_paths in sorted(index_data.get("ostreams", {}).items()):
+        p_paths = index_data.get("pstreams", {}).get(session, []) or all_pstreams
+        if not o_paths or not p_paths:
+            continue
+        o_path = Path(o_paths[0])
+        if o_path.name in {"align.json", "index.json"}:
+            continue
+        p_path = Path(p_paths[0])
 
-    pressure_value = None
-    if result.mapping >= 0:
-        pressure_value = pstream[result.mapping].pressure
-        fmap.add(sid, file_stamp, pressure_value, alignment_error=result.E_align)
-
-    delta_p = result.diagnostics.get("delta_p")
-
-    if export:
-        tables = export_tables(signals, osc_files, fmap, tall=True)
-        with open(export, "w", encoding="utf8") as fh:
-            json.dump(tables, fh, default=float)
-        typer.echo(f"Exported tables to {export}")
-    else:
-        typer.echo(
-            f"Signals: {len(signals)}, OscFiles: {len(osc_files)}, File2PressureMap: {len(fmap)}"
+        ostream = load_ostream(o_path)
+        pstream = list(read_pstream(p_path))
+        result = align_streams(
+            ostream,
+            pstream,
+            tie_breaker=cfg.mapping.tie_breaker,
+            O_max=cfg.mapping.O_max,
+            W=cfg.mapping.W,
+            kappa=cfg.mapping.kappa,
+            reject_if_Ealign_gt_Omax=cfg.quality.reject_if_Ealign_gt_Omax,
         )
-        if pressure_value is not None and delta_p is not None:
-            typer.echo(
-                f"Alignment index: {result.mapping}, E_align={result.E_align:.6f}, ΔP={delta_p:.6f}"
-            )
-        else:
-            typer.echo(
-                f"Alignment index: {result.mapping}, E_align={result.E_align:.6f}"
-            )
+
+        sid = ostream.session_id
+        file_stamp = o_path.stem
+
+        data = np.asarray(ostream.channels)
+        if data.ndim == 2:
+            data = data[:, 0]
+        data = np.asarray(data).reshape(-1)
+        for idx, value in enumerate(data):
+            signals.add(sid, file_stamp, idx, float(value))
+            osc_files.add(sid, file_stamp, idx, str(o_path))
+
+        if result.mapping >= 0:
+            pressure_value = pstream[result.mapping].pressure
+            fmap.add(sid, file_stamp, pressure_value, alignment_error=result.E_align)
+
+    tables = export_tables(signals, osc_files, fmap, tall=True)
+    export_path = Path(export) if export else root / "align.json"
+    with open(export_path, "w", encoding="utf8") as fh:
+        json.dump(tables, fh, default=float)
+    typer.echo(f"Exported tables to {export_path}")
 
 
 @app.command()
