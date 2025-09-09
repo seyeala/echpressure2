@@ -325,8 +325,5 @@ def main(cfg: DictConfig) -> None:
 
 
 if __name__ == "__main__":
-    import sys
-    if "--" in sys.argv:
-        sys.argv = [sys.argv[0]] + sys.argv[sys.argv.index("--") + 1 :]
-    app()
+    main()
 
