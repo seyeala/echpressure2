@@ -14,7 +14,7 @@ from typing import Sequence
 import numpy as np
 from scipy.signal import savgol_filter
 
-from echopress.config import Settings
+from ..config import Settings
 
 
 def _validate_window(W: int, n: int) -> None:
