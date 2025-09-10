@@ -65,6 +65,15 @@ class PStreamRecord:
     voltages: Optional[Tuple[float, ...]] = None
 
 
+class PStreamParseError(ValueError):
+    """Raised when a P-stream file cannot be parsed."""
+
+    def __init__(self, message: str, *, path: Union[str, pathlib.Path], line: int):
+        self.path = str(path)
+        self.line = line
+        super().__init__(f"{self.path}:{self.line}: {message}")
+
+
 def _parse_values_line(line: str, *, col: int = 2) -> float:
     parts = [t for t in re.split(r"[,\s]+", line.strip()) if t]
     if not parts:
@@ -86,28 +95,33 @@ def _parse_simple_line(line: str) -> Optional[PStreamRecord]:
     return None
 
 
-def _read_pstream_text(fh: TextIO, *, value_col: int) -> Iterator[PStreamRecord]:
+def _read_pstream_text(
+    fh: TextIO, *, value_col: int, path: Union[str, pathlib.Path] = "<stream>"
+) -> Iterator[PStreamRecord]:
     pending_ts: Optional[datetime] = None
-    for raw in fh:
+    for lineno, raw in enumerate(fh, start=1):
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
-        # Timestamp line?
-        m = TIMESTAMP_RE.match(line)
-        if m:
-            pending_ts = parse_timestamp(line)
-            continue
+        try:
+            # Timestamp line?
+            m = TIMESTAMP_RE.match(line)
+            if m:
+                pending_ts = parse_timestamp(line)
+                continue
 
-        # Values line after a timestamp
-        if pending_ts is not None:
-            yield PStreamRecord(pending_ts, _parse_values_line(line, col=value_col))
-            pending_ts = None
-        else:
-            rec = _parse_simple_line(line)
-            if rec is not None:
-                yield rec
+            # Values line after a timestamp
+            if pending_ts is not None:
+                yield PStreamRecord(pending_ts, _parse_values_line(line, col=value_col))
+                pending_ts = None
             else:
-                raise ValueError(f"Unrecognised P-stream line: {line!r}")
+                rec = _parse_simple_line(line)
+                if rec is not None:
+                    yield rec
+                else:
+                    raise ValueError(f"Unrecognised P-stream line: {line!r}")
+        except ValueError as e:
+            raise PStreamParseError(str(e), path=path, line=lineno) from e
 
 
 def read_pstream(
@@ -140,15 +154,16 @@ def read_pstream(
                         yield PStreamRecord(ts, float(row["pressure"]))
                     return
                 # Fall back to paired/simple text parsing
-                for rec in _read_pstream_text(fh, value_col=value_col):
+                for rec in _read_pstream_text(fh, value_col=value_col, path=p):
                     yield rec
             return
 
         # Plain text file
         with open(p, "r", encoding="utf8") as fh:
-            for rec in _read_pstream_text(fh, value_col=value_col):
+            for rec in _read_pstream_text(fh, value_col=value_col, path=p):
                 yield rec
     else:
         # File-like
-        for rec in _read_pstream_text(path, value_col=value_col):
+        stream_name = getattr(path, "name", "<stream>")
+        for rec in _read_pstream_text(path, value_col=value_col, path=stream_name):
             yield rec
