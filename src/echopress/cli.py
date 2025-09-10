@@ -18,9 +18,10 @@ from .config import Settings
 from .ingest import DatasetIndexer, load_ostream, read_pstream
 import json
 import random
-
+import logging
 
 app = typer.Typer(help="Utilities for the echopress project")
+logger = logging.getLogger(__name__)
 
 
 @app.command()
@@ -103,6 +104,7 @@ def align(
     ctx: typer.Context,
     root: Path = typer.Argument(..., exists=True, file_okay=False, dir_okay=True),
     export: Optional[Path] = typer.Option(None, "--export", "-e"),
+    debug: bool = typer.Option(False, "--debug", help="Show tracebacks on failure"),
 ) -> None:
     """Align sessions listed in ``index.json`` under ``root``.
 
@@ -114,6 +116,7 @@ def align(
 
     cfg: DictConfig = ctx.obj
     root = Path(root)
+    debug = getattr(ctx.obj, "debug", False) or debug
 
     index_path = root / "index.json"
     if index_path.exists():
@@ -147,17 +150,28 @@ def align(
             continue
         p_path = Path(p_paths[0])
 
-        ostream = load_ostream(o_path)
-        pstream = list(read_pstream(p_path))
-        result = align_streams(
-            ostream,
-            pstream,
-            tie_breaker=cfg.mapping.tie_breaker,
-            O_max=cfg.mapping.O_max,
-            W=cfg.mapping.W,
-            kappa=cfg.mapping.kappa,
-            reject_if_Ealign_gt_Omax=cfg.quality.reject_if_Ealign_gt_Omax,
-        )
+        try:
+            ostream = load_ostream(o_path)
+            pstream = list(read_pstream(p_path))
+            result = align_streams(
+                ostream,
+                pstream,
+                tie_breaker=cfg.mapping.tie_breaker,
+                O_max=cfg.mapping.O_max,
+                W=cfg.mapping.W,
+                kappa=cfg.mapping.kappa,
+                reject_if_Ealign_gt_Omax=cfg.quality.reject_if_Ealign_gt_Omax,
+            )
+        except Exception as exc:
+            msg = (
+                f"Failed to align session {session} "
+                f"(O-stream: {o_path}, P-stream: {p_path}): {exc}"
+            )
+            if debug:
+                logger.exception(msg)
+                raise
+            typer.secho(msg, err=True)
+            continue
 
         sid = ostream.session_id
         file_stamp = o_path.stem
