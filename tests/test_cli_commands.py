@@ -28,6 +28,7 @@ def make_cfg(tmp_path):
             "pressure": {"scalar_channel": 2},
             "units": {"pressure": "Pa", "voltage": "V"},
             "timestamp": {"timezone": "UTC"},
+            "align": {"duration": 0.02, "window_mode": False, "base_year": None},
             "adapter": {
                 "name": "cec",
                 "output_length": 0,
