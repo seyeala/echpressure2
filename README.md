@@ -61,7 +61,7 @@ P-streams:
 python -m echopress.cli index
 
 # Align O-stream files to the P-stream using the cached index
-python -m echopress.cli align /data
+python -m echopress.cli align /data --window-mode --duration 0.05 --base-year 2023
 
 # Run an adapter on files within a pressure range and save features
 python -m echopress.cli adapt --adapter cec --pr-min 80 --pr-max 120 --n 5 --output features.npy
@@ -69,8 +69,11 @@ python -m echopress.cli adapt --adapter cec --pr-min 80 --pr-max 120 --n 5 --out
 
 The `index` command writes an `index.json` file under the dataset root. The
 `align` step consumes this digest, aligns the first O-/P-stream pair in each
-session and emits a consolidated `align.json` table.  Downstream utilities like
-`adapt` read this table to locate files by pressure value.
+session and emits a consolidated `align.json` table.  When ``--window-mode`` is
+used, O-stream files are treated as timestamped capture windows; even files with
+no channel data are still recorded so their paths appear in the exported table.
+Downstream utilities like `adapt` read this table to locate files by pressure
+value.
 
 Existing commands such as `ingest`, `calibrate` and `viz` remain available.
 

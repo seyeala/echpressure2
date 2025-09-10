@@ -105,6 +105,19 @@ def align(
     root: Path = typer.Argument(..., exists=True, file_okay=False, dir_okay=True),
     export: Optional[Path] = typer.Option(None, "--export", "-e"),
     debug: bool = typer.Option(False, "--debug", help="Show tracebacks on failure"),
+    window_mode: Optional[bool] = typer.Option(
+        None,
+        "--window-mode/--no-window-mode",
+        help="Treat O-streams as capture windows with no channel data",
+    ),
+    duration: Optional[float] = typer.Option(
+        None, "--duration", help="Capture window duration in seconds"
+    ),
+    base_year: Optional[int] = typer.Option(
+        None,
+        "--base-year",
+        help="Base year for timestamps embedded in window-mode filenames",
+    ),
 ) -> None:
     """Align sessions listed in ``index.json`` under ``root``.
 
@@ -113,13 +126,22 @@ def align(
     first O-stream/P-stream pair is aligned and the resulting tables are
     consolidated into ``align.json``.
 
-    O-stream files containing only timestamps (zero channels) are ignored and
-    skipped with a warning.
+    ``align`` supports optional "window mode" processing where O-stream files
+    contain only timestamps.  Use ``--window-mode`` with ``--duration`` and
+    ``--base-year`` to forward these parameters to :func:`load_ostream`.
     """
 
     cfg: DictConfig = ctx.obj
     root = Path(root)
     debug = getattr(ctx.obj, "debug", False) or debug
+
+    align_cfg = getattr(cfg, "align", {})
+    if window_mode is None:
+        window_mode = getattr(align_cfg, "window_mode", False)
+    if duration is None:
+        duration = getattr(align_cfg, "duration", 0.02)
+    if base_year is None:
+        base_year = getattr(align_cfg, "base_year", None)
 
     index_path = root / "index.json"
     if index_path.exists():
@@ -154,7 +176,12 @@ def align(
         p_path = Path(p_paths[0])
 
         try:
-            ostream = load_ostream(o_path)
+            ostream = load_ostream(
+                o_path,
+                window_mode=window_mode,
+                duration_s=duration,
+                base_year=base_year,
+            )
             pstream = list(read_pstream(p_path))
             result = align_streams(
                 ostream,
@@ -184,12 +211,17 @@ def align(
             if data.shape[1] > 0:
                 data = data[:, 0]
             else:
-                typer.secho(f"O-stream {o_path} has zero channels; skipping", err=True)
+                typer.echo(
+                    f"O-stream {o_path} has zero channels; processing in window mode"
+                )
                 data = np.array([])
         data = np.asarray(data).reshape(-1)
-        for idx, value in enumerate(data):
-            signals.add(sid, file_stamp, idx, float(value))
-            osc_files.add(sid, file_stamp, idx, str(o_path))
+        if data.size == 0:
+            osc_files.add(sid, file_stamp, 0, str(o_path))
+        else:
+            for idx, value in enumerate(data):
+                signals.add(sid, file_stamp, idx, float(value))
+                osc_files.add(sid, file_stamp, idx, str(o_path))
 
         if result.mapping >= 0:
             pressure_value = pstream[result.mapping].pressure
