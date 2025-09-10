@@ -135,13 +135,13 @@ def align(
     root = Path(root)
     debug = getattr(ctx.obj, "debug", False) or debug
 
-    align_cfg = getattr(cfg, "align", {})
+    align_cfg = cfg.align
     if window_mode is None:
-        window_mode = getattr(align_cfg, "window_mode", False)
+        window_mode = align_cfg.window_mode
     if duration is None:
-        duration = getattr(align_cfg, "duration", 0.02)
+        duration = align_cfg.duration
     if base_year is None:
-        base_year = getattr(align_cfg, "base_year", None)
+        base_year = align_cfg.base_year
 
     index_path = root / "index.json"
     if index_path.exists():
