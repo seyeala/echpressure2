@@ -112,6 +112,9 @@ def align(
     ``index.json`` is missing it is built on the fly.  For each session the
     first O-stream/P-stream pair is aligned and the resulting tables are
     consolidated into ``align.json``.
+
+    O-stream files containing only timestamps (zero channels) are ignored and
+    skipped with a warning.
     """
 
     cfg: DictConfig = ctx.obj
@@ -178,7 +181,11 @@ def align(
 
         data = np.asarray(ostream.channels)
         if data.ndim == 2:
-            data = data[:, 0]
+            if data.shape[1] > 0:
+                data = data[:, 0]
+            else:
+                typer.secho(f"O-stream {o_path} has zero channels; skipping", err=True)
+                data = np.array([])
         data = np.asarray(data).reshape(-1)
         for idx, value in enumerate(data):
             signals.add(sid, file_stamp, idx, float(value))

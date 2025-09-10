@@ -17,6 +17,10 @@ with a start time derived from its filename and a fixed duration.
 Window mode emits an empty `(2, 0)` channel matrix and sets alignment midpoint
 to `start + duration_s/2`.
 
+O-stream files that only contain timestamps (zero channels) are valid; the
+`align` command will skip them with a warning while still exporting any
+available pressure mappings.
+
 ### Sample usage
 
 ```python
