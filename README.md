@@ -32,7 +32,8 @@ The codebase is organised into focused modules:
 ## Repository Layout
 
 ```
-conf/       Hydra configuration groups
+conf/       legacy Hydra presets (reference only)
+config/     example Pydantic settings files
 src/        library code under `echopress`
 viz/        plotting helpers
 tests/      unit tests
@@ -96,9 +97,25 @@ for record in read_pstream(pstream_path):
 
 ## Configuration
 
-Runtime configuration is managed with [Hydra](https://hydra.cc). The default
-configuration in `conf/config.yaml` composes several YAML groups under `conf/`,
-including:
+Runtime configuration is managed with [Pydantic Settings](https://docs.pydantic.dev/latest/concepts/pydantic_settings/).
+The root model lives in `echopress.config.Settings` and mirrors the legacy Hydra
+defaults. A ready-to-use template is shipped in `config/example.yaml`.
+
+Settings can be supplied in three complementary ways:
+
+1. **Configuration file** – pass `--config path/to/settings.yaml` to the CLI.
+   Files may be JSON or YAML; nested keys must match the structure described
+   below. The provided template includes sensible defaults for calibration,
+   mapping and adapter behaviour.
+2. **Environment variables** – any field can be overridden by defining
+   `ECHOPRESS_<SECTION>__<FIELD>` (note the double underscore to separate nested
+   keys). For example,
+   `export ECHOPRESS_DATASET__ROOT=/data/echopress` changes the dataset root for
+   subsequent commands.
+3. **Inline overrides** – use the `--set` option to update dotted keys without
+   editing files, e.g. `--set mapping.O_max=0.005 --set adapter.n=4`.
+
+Key sections available in the settings schema include:
 
 * `dataset` – dataset root directory and timestamp metadata
 * `ingest` – patterns to recognise P-stream CSV files (default `['voltprsr']`,
@@ -112,44 +129,17 @@ including:
 * `adapter` – parameters for signal adapters
 * `viz` – options for plotting
 
-The configuration uses a nested schema. A minimal configuration looks like:
-
-```yaml
-calibration:
-  alpha: [1.0, 1.0, 1.0]
-  beta: [0.0, 0.0, 0.0]
-pressure:
-  scalar_channel: 2
-units:
-  pressure: Pa
-  voltage: V
-timestamp:
-  format: null
-  timezone: UTC
-  year_fallback: 1970
-quality:
-  reject_if_Ealign_gt_Omax: true
-  min_records_in_W: 3
-adapter:
-  name: cec
-  output_length: 0  # use full output
-  period_est:
-    fs: 10.0
-    f0: 2.0
-```
-
-Commands in `echopress.cli` are wrapped by `hydra.main` so overrides can be
-passed directly on the command line. For example, to adjust calibration
-parameters at runtime:
+Loading the example configuration and overriding individual values looks like:
 
 ```bash
-python -m echopress.cli calibrate data.npy -o out.npy calibration.alpha='[2.0]'
+# Use the example settings and override the dataset root on the fly
+python -m echopress.cli --config config/example.yaml --set dataset.root=/data index
+
+# Environment variables are also respected
+export ECHOPRESS_ADAPTER__NAME=cec
+python -m echopress.cli --config config/example.yaml adapt --n 8 --output features.npy
 ```
 
-The `Settings` container remains available for functions that expect it. In the
-CLI, values from Hydra's nested sections are converted into `Settings`
-instances for compatibility. `Settings` now inherits from Pydantic's
-`BaseSettings`, so instantiating it (`Settings()`) automatically applies
-environment variables with the `ECHOPRESS_` prefix (e.g.
-`ECHOPRESS_CALIBRATION__ALPHA`). `echopress.config.load_settings` can still be
-used to load JSON/YAML files when Hydra is not desired.
+The `Settings` container inherits from Pydantic's `BaseSettings`, so creating an
+instance (`Settings()`) automatically applies environment overrides. Use
+`echopress.config.load_settings` to load JSON/YAML files programmatically.

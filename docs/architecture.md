@@ -12,4 +12,7 @@ Alignment enforces a maximum allowable error ``O_max``. If the midpoint lies far
 5. **Visualization** – Utilities to inspect raw, mapped and transformed data.
 6. **Export** – On-demand routines generate NumPy-first datasets ready for machine-learning frameworks.
 
-Hydra-driven configuration keeps the system modular while outputs remain framework-agnostic for future integration.
+Configuration is handled by Typer + Pydantic Settings: commands share a single
+validated `Settings` instance loaded from YAML/JSON files, environment
+variables, or inline overrides. This keeps the system modular while outputs
+remain framework-agnostic for future integration.

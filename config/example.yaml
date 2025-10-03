@@ -1,0 +1,66 @@
+dataset:
+  root: .
+  timezone: UTC
+  timestamp_grammar: |
+    ISO-8601, HH:MM:SS[.ffffff], floating-point seconds since the Unix epoch,
+    or Mxx-Dxx-Hxx-Mxx-Sxx-U.xxx
+  ostream: null
+  pstream: null
+
+ingest:
+  pstream_csv_patterns:
+    - voltprsr
+
+mapping:
+  tie_breaker: earliest
+  O_max: 0.0001
+  W: 5
+  kappa: 3.0
+
+calibration:
+  alpha:
+    - 1.0
+    - 1.0
+    - 1.0
+  beta:
+    - 0.0
+    - 0.0
+    - 0.0
+
+pressure:
+  scalar_channel: 2
+
+units:
+  pressure: Pa
+  voltage: V
+
+timestamp:
+  format: null
+  timezone: UTC
+  year_fallback: 1970
+
+quality:
+  reject_if_Ealign_gt_Omax: true
+  min_records_in_W: 3
+
+align:
+  duration: 0.02
+  window_mode: true
+  base_year: null
+
+adapter:
+  name: cec
+  output_length: 0
+  period_est:
+    fs: 1.0
+    f0: 1.0
+  pr_min: null
+  pr_max: null
+  n: 1
+  plot: false
+  align_table: align.json
+  seed: 0
+
+viz:
+  title: Signal
+  save: null
