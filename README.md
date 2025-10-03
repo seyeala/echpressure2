@@ -148,6 +148,8 @@ python -m echopress.cli calibrate data.npy -o out.npy calibration.alpha='[2.0]'
 
 The `Settings` container remains available for functions that expect it. In the
 CLI, values from Hydra's nested sections are converted into `Settings`
-instances for compatibility. `Settings.from_env` and
-`echopress.config.load_settings` still allow configuration via environment
-variables or explicit files when Hydra is not desired.
+instances for compatibility. `Settings` now inherits from Pydantic's
+`BaseSettings`, so instantiating it (`Settings()`) automatically applies
+environment variables with the `ECHOPRESS_` prefix (e.g.
+`ECHOPRESS_CALIBRATION__ALPHA`). `echopress.config.load_settings` can still be
+used to load JSON/YAML files when Hydra is not desired.
