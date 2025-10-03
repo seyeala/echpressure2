@@ -14,7 +14,7 @@ pW .
 optional lazy/batched loading for large corpora.
 • Framework-agnostic outputs (NumPy-first), ready for PyTorch/TF dataset wrappers at a
 later stage.
-• Hydra-driven configuration via YAML (hierarchical, overrideable).
+• Typer + Pydantic Settings configuration via YAML/JSON files, environment overrides, and inline `--set` flags.
 • Window-mode O-stream parsing for fixed-duration windows.
 • Configurable P-stream CSV patterns for flexible record layouts.
 • Extremely modular adapters: each in its own folder with adapter.py, adapter.yml,
@@ -68,8 +68,8 @@ hte.yaml
 wcv.yaml
 mfcc.yaml
 viz/
-default.yaml
-data/
+# Legacy Hydra configs (reference)
+# Typer CLI entrypoints backed by Pydantic Settings
 raw/
 scratch/
 docs/
@@ -178,53 +178,44 @@ test_uncertainty.py
 # parse O-stream files to arrays + meta
 # p^(k)=alpha_k v^(k)+beta_k; scalar p=channel 3
 # midpoint alignment; E_align; tie-break
-# DerivEst (central/local-linear/savgol)
-# |P| <= kappa |dp/dt| * E_align
-# build in-memory tables (Signals, Map, ...)
-# unified adapter interface + library
-# Adapter Protocol; registry; validation
+Configuration with Typer + Pydantic Settings
 
-# same pattern for each adapter
+- Root schema defined in `echopress.config.Settings` using Pydantic models.
+- Template file `config/example.yaml` mirrors the previous Hydra defaults so users
+  can start from a familiar baseline.
+- Load configuration via `python -m echopress.cli --config config/example.yaml`.
+- Override any nested field with environment variables using the
+  `ECHOPRESS_<SECTION>__<FIELD>` pattern (e.g. `ECHOPRESS_MAPPING__O_MAX=0.01`).
+- Use CLI overrides for quick tweaks: `--set mapping.O_max=0.01 --set adapter.n=3`.
 
-# raw vs calibrated vs pressure overlay
-# show T_mid vs nearest T^P; errors
-# grid of adapter outputs, random by pressure
+Excerpt from `config/example.yaml`:
 
-# (X, y) in-memory build; optional save
-# Torch/TF-ready wrappers (future)
-# pytest suite
+```
+dataset:
+  root: .
+  timezone: UTC
+  timestamp_grammar: |
+    ISO-8601, HH:MM:SS[.ffffff], floating-point seconds since the Unix epoch,
+    or Mxx-Dxx-Hxx-Mxx-Sxx-U.xxx
+mapping:
+  tie_breaker: earliest
+  W: 5
+  O_max: 0.0001
+  kappa: 3.0
+calibration:
+  alpha: [1.0, 1.0, 1.0]
+  beta: [0.0, 0.0, 0.0]
+adapter:
+  name: cec
+  n: 1
+  align_table: ${dataset.root}/align.json
+quality:
+  reject_if_Ealign_gt_Omax: true
+  min_records_in_W: 3
+```
 
-3
-
-test_tables.py
-adapters/
-test_pb_csa.py
-test_plstn.py
-...
-test_mfcc.py
-
-4
-
-Configuration with Hydra (YAML)
-
-Master config conf/config.yaml
-defaults:
-- dataset: default
-- calibration: default
-- mapping: default
-- adapter: fts
-# choose active adapter group by default
-- viz: default
-- _self_
-run:
-seed: 1234
-num_workers: 0
-paths:
-data_root: ${dataset.data_root}
-pstream_glob: "${dataset.data_root}/raw/pstream/*.txt"
-ostream_glob: "${dataset.data_root}/raw/ostream/*.csv"
-tz: "UTC"
-
+The CLI initialiser loads and validates this data once, then shares it with all
+commands through Typer's context object.
 Example conf/mapping/default.yaml
 O_max: 0.250
 # seconds
@@ -391,27 +382,34 @@ ADAPTERS = {}
 
 def register(name: str):
 def deco(cls):
-ADAPTERS[name] = cls
-return cls
-return deco
+CLI Entrypoints (Typer + Pydantic Settings)
+from echopress.config import Settings, load_settings
+app = typer.Typer()
 
-Per-adapter folder contract
-Every adapter folder contains:
-• adapter.py (implements Adapter protocol, registers itself)
-• adapter.yml (hyperparameters)
-• README.md (theory, math, references)
-• tests/ (unit tests on synthetic signals)
+@app.callback()
+def init(ctx: typer.Context, config: Path | None = None, set: list[str] = typer.Option([])):
+    """Load Settings once, then share them via Typer's context."""
+    ctx.obj = load_settings(config) if config else Settings()
+    for override in set:
+        ...  # dotted-path override logic, then Settings.model_validate
 
-8
+def index(ctx: typer.Context, cache: Path | None = None):
+    settings: Settings = ctx.obj
+    ...
 
-Visualization Module
+def align(ctx: typer.Context, dataset_root: Path | None = None):
+    settings: Settings = ctx.obj
+    ...
 
-# src/echopress/viz/plot_adapter.py
-def grid_by_pressure(adapter_name: str, pr_min: float, pr_max: float, n: int, seed: int, ...)
-"""Sample ’n’ files with p*(F) in [pr_min, pr_max], compute adapter vectors,
-and plot (or return) results. Supports --return_numpy to emit arrays."""
-
-9
+def adapt(ctx: typer.Context, adapter: str = typer.Option(...), pr_min: float = 0.0, pr_max: float = 300.0, n: int = 8, return_numpy: bool = False):
+    settings: Settings = ctx.obj
+    ...
+# index and alignment with defaults from the example settings
+python -m echopress.cli --config config/example.yaml index
+python -m echopress.cli --config config/example.yaml align --set mapping.O_max=0.200 --set mapping.tie_breaker=latest
+python -m echopress.cli --config config/example.yaml adapt --adapter mfcc --pr-min 80 --pr-max 120 --n 9
+# build an in-memory dataset of (FTS, pressure) while overriding via env var
+ECHOPRESS_ADAPTER__NAME=fts python -m echopress.cli --config config/example.yaml adapt --return-numpy true
 
 Export (on-demand, for ML)
 
@@ -510,8 +508,8 @@ References: Oppenheim & Schafer (1989).
 Adapter Example: HMV (src/echopress/adapters/hmv/README.md)
 # Harmonic Magnitude Vector (HMV)
 Idea: Magnitudes at first H harmonics of estimated f0 yield a compact, shift-invariant
-representation (phase removed).
-Math:
+• Reproducibility: Capture validated Pydantic Settings snapshots; store resolved config in run dir; fixed seed.
+6. Debug: toggle Typer `--set` overrides or environment variables for thresholds/hyperparameters; run unit tests with pytest
 X(k) = | _n v[n] exp(-i 2 k f0 t[n]) |, k=1..H
 Feature vector x = [X(1), ..., X(H)] R^H.
 Config: adapter.yml (H, normalization, f0 estimation method).
