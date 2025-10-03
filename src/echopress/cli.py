@@ -78,6 +78,42 @@ def _apply_override(data: Dict[str, object], keys: List[str], value: object) -> 
     target[keys[-1]] = value
 
 
+def _ensure_settings(obj: object) -> Settings:
+    if isinstance(obj, Settings):
+        return obj
+    if isinstance(obj, dict):
+        return Settings.model_validate(obj)
+    raise typer.BadParameter("CLI context does not contain a Settings instance")
+
+
+def _get_settings(ctx: typer.Context) -> Settings:
+    if ctx.obj is None:
+        ctx.obj = Settings()
+    if not isinstance(ctx.obj, Settings):
+        settings = _ensure_settings(ctx.obj)
+        ctx.obj = settings
+        return settings
+    return ctx.obj
+
+
+def _dataset_root(settings: Settings) -> Path:
+    return Path(settings.dataset.root).expanduser()
+
+
+def _resolve_align_table(settings: Settings, base_root: Path, override: Optional[Path] = None) -> Path:
+    if override is not None:
+        align_path = override
+    else:
+        align_value = settings.adapter.align_table
+        if not align_value:
+            align_path = base_root / "align.json"
+        else:
+            align_path = Path(align_value)
+            if not align_path.is_absolute():
+                align_path = base_root / align_path
+    return align_path
+
+
 @app.callback()
 def init(
     ctx: typer.Context,
@@ -94,14 +130,47 @@ def init(
         "--set",
         help="Override configuration values using dotted paths, e.g. dataset.root=/data",
     ),
+    dataset_root: Optional[Path] = typer.Option(
+        None,
+        "--dataset-root",
+        dir_okay=True,
+        file_okay=False,
+        exists=False,
+        help="Override the dataset.root value from the configuration file.",
+    ),
+    adapter_name: Optional[str] = typer.Option(
+        None,
+        "--adapter-name",
+        help="Override the adapter.name value from the configuration file.",
+    ),
+    align_table: Optional[Path] = typer.Option(
+        None,
+        "--align-table",
+        dir_okay=False,
+        file_okay=True,
+        exists=False,
+        help="Override the adapter.align_table path.",
+    ),
 ) -> None:
     """Initialise the Typer context with validated settings."""
 
     if config is not None and not config.exists():
         raise typer.BadParameter(f"configuration file not found: {config}")
 
+    base_settings: Optional[Settings] = None
+    if ctx.obj is not None:
+        try:
+            base_settings = _ensure_settings(ctx.obj)
+        except typer.BadParameter:
+            base_settings = None
+
     try:
-        settings = load_settings(config) if config else Settings()
+        if config:
+            settings = load_settings(config)
+        elif base_settings is not None:
+            settings = base_settings
+        else:
+            settings = Settings()
     except (FileNotFoundError, RuntimeError, TypeError, json.JSONDecodeError) as exc:
         raise typer.BadParameter(f"failed to load configuration: {exc}") from exc
 
@@ -124,6 +193,27 @@ def init(
         except ValidationError as exc:
             raise typer.BadParameter(f"invalid configuration override: {exc}") from exc
 
+    if dataset_root is not None:
+        settings = settings.model_copy(
+            update={
+                "dataset": settings.dataset.model_copy(update={"root": str(dataset_root)})
+            }
+        )
+
+    if adapter_name is not None:
+        settings = settings.model_copy(
+            update={"adapter": settings.adapter.model_copy(update={"name": adapter_name})}
+        )
+
+    if align_table is not None:
+        settings = settings.model_copy(
+            update={
+                "adapter": settings.adapter.model_copy(
+                    update={"align_table": str(align_table)}
+                )
+            }
+        )
+
     ctx.obj = settings
 
 
@@ -131,6 +221,14 @@ def init(
 def index(
     ctx: typer.Context,
     cache: Optional[str] = typer.Option(None, "--cache", "-c"),
+    dataset_root: Optional[Path] = typer.Option(
+        None,
+        "--dataset-root",
+        dir_okay=True,
+        file_okay=False,
+        exists=False,
+        help="Override the dataset.root configured in the settings.",
+    ),
 ) -> None:
     """Scan the dataset directory and cache file paths.
 
@@ -139,18 +237,10 @@ def index(
     by other commands to avoid repeatedly walking the dataset tree.
     """
 
-    cfg: Settings = ctx.obj
-    root_cfg = getattr(cfg.dataset, "root", None)
-    root_path: Path
-    if isinstance(root_cfg, str):
-        root_path = Path(root_cfg)
-    else:
-        # ``root`` may be a mapping with ``ostream``/``pstream`` entries; use
-        # the O-stream root as the base directory since most datasets place
-        # all files under a common tree.
-        root_path = Path(getattr(root_cfg, "ostream", "."))
+    settings = _get_settings(ctx)
+    root_path = Path(dataset_root) if dataset_root else _dataset_root(settings)
 
-    indexer = DatasetIndexer(root_path)
+    indexer = DatasetIndexer(root_path, settings=settings)
     data = {
         "pstreams": {sid: [str(p) for p in paths] for sid, paths in indexer.pstreams.items()},
         "ostreams": {sid: [str(o) for o in paths] for sid, paths in indexer.ostreams.items()},
@@ -168,9 +258,14 @@ def index(
 def ingest(ctx: typer.Context) -> None:
     """Load O- and P-streams as specified by the dataset config."""
 
-    cfg: Settings = ctx.obj
-    ostream = load_ostream(cfg.dataset.ostream)
-    pstream = list(read_pstream(cfg.dataset.pstream))
+    settings = _get_settings(ctx)
+    dataset_cfg = settings.dataset
+    if not hasattr(dataset_cfg, "ostream") or not hasattr(dataset_cfg, "pstream"):
+        raise typer.BadParameter(
+            "dataset configuration must define 'ostream' and 'pstream' entries"
+        )
+    ostream = load_ostream(dataset_cfg.ostream)
+    pstream = list(read_pstream(dataset_cfg.pstream))
     typer.echo(
         f"O-stream samples: {len(ostream.timestamps)}, P-stream records: {len(pstream)}"
     )
@@ -184,14 +279,10 @@ def calibrate(
 ) -> None:
     """Apply calibration coefficients to a numeric array."""
 
-    cfg: Settings = ctx.obj
+    settings = _get_settings(ctx)
     data = np.loadtxt(input, delimiter=",") if input.endswith(".csv") else np.load(
         input
     )
-    settings = Settings()
-    settings.calibration.alpha = list(cfg.calibration.alpha)
-    settings.calibration.beta = list(cfg.calibration.beta)
-    settings.pressure.scalar_channel = cfg.pressure.scalar_channel
     calibrated = apply_calibration(data, settings=settings)
     if output:
         if output.endswith(".csv"):
@@ -205,7 +296,10 @@ def calibrate(
 @app.command()
 def align(
     ctx: typer.Context,
-    root: Path = typer.Argument(..., exists=True, file_okay=False, dir_okay=True),
+    root: Optional[Path] = typer.Argument(
+        None,
+        help="Dataset root directory. Defaults to dataset.root from the settings.",
+    ),
     export: Optional[Path] = typer.Option(None, "--export", "-e"),
     debug: bool = typer.Option(False, "--debug", help="Show tracebacks on failure"),
     window_mode: Optional[bool] = typer.Option(
@@ -221,6 +315,14 @@ def align(
         "--base-year",
         help="Base year for timestamps embedded in window-mode filenames",
     ),
+    dataset_root: Optional[Path] = typer.Option(
+        None,
+        "--dataset-root",
+        dir_okay=True,
+        file_okay=False,
+        exists=False,
+        help="Override the dataset root directory for this command.",
+    ),
 ) -> None:
     """Align sessions listed in ``index.json`` under ``root``.
 
@@ -234,11 +336,19 @@ def align(
     ``--base-year`` to forward these parameters to :func:`load_ostream`.
     """
 
-    cfg: Settings = ctx.obj
-    root = Path(root)
-    debug = getattr(ctx.obj, "debug", False) or debug
+    settings = _get_settings(ctx)
+    debug = debug
 
-    align_cfg = cfg.align
+    if dataset_root is not None:
+        base_root = Path(dataset_root)
+    elif root is not None:
+        base_root = Path(root)
+    else:
+        base_root = _dataset_root(settings)
+    if not base_root.exists():
+        raise typer.BadParameter(f"dataset root not found: {base_root}")
+
+    align_cfg = settings.align
     if window_mode is None:
         window_mode = align_cfg.window_mode
     if duration is None:
@@ -246,12 +356,12 @@ def align(
     if base_year is None:
         base_year = align_cfg.base_year
 
-    index_path = root / "index.json"
+    index_path = base_root / "index.json"
     if index_path.exists():
         with open(index_path, "r", encoding="utf8") as fh:
             index_data: Dict[str, Dict[str, List[str]]] = json.load(fh)
     else:
-        indexer = DatasetIndexer(root)
+        indexer = DatasetIndexer(base_root, settings=settings)
         index_data = {
             "pstreams": {
                 sid: [str(p) for p in indexer.get_pstreams(sid, fallback=False)]
@@ -289,11 +399,7 @@ def align(
             result = align_streams(
                 ostream,
                 pstream,
-                tie_breaker=cfg.mapping.tie_breaker,
-                O_max=cfg.mapping.O_max,
-                W=cfg.mapping.W,
-                kappa=cfg.mapping.kappa,
-                reject_if_Ealign_gt_Omax=cfg.quality.reject_if_Ealign_gt_Omax,
+                settings=settings,
             )
         except Exception as exc:
             msg = (
@@ -331,7 +437,7 @@ def align(
             fmap.add(sid, file_stamp, pressure_value, alignment_error=result.E_align)
 
     tables = export_tables(signals, osc_files, fmap, tall=True)
-    export_path = Path(export) if export else root / "align.json"
+    export_path = Path(export) if export else base_root / "align.json"
     with open(export_path, "w", encoding="utf8") as fh:
         json.dump(tables, fh, default=float)
     typer.echo(f"Exported tables to {export_path}")
@@ -340,12 +446,34 @@ def align(
 @app.command()
 def adapt(
     ctx: typer.Context,
-    adapter: Optional[str] = typer.Option(None, "--adapter", "-a"),
+    adapter: Optional[str] = typer.Option(
+        None,
+        "--adapter-name",
+        "--adapter",
+        "-a",
+        help="Adapter implementation to execute.",
+    ),
     pr_min: Optional[float] = typer.Option(None, "--pr-min"),
     pr_max: Optional[float] = typer.Option(None, "--pr-max"),
     n: Optional[int] = typer.Option(None, "--n"),
     output: Optional[str] = typer.Option(None, "--output", "-o"),
     plot: Optional[bool] = typer.Option(None, "--plot/--no-plot"),
+    dataset_root: Optional[Path] = typer.Option(
+        None,
+        "--dataset-root",
+        dir_okay=True,
+        file_okay=False,
+        exists=False,
+        help="Override the dataset root containing the alignment table.",
+    ),
+    align_table: Optional[Path] = typer.Option(
+        None,
+        "--align-table",
+        dir_okay=False,
+        file_okay=True,
+        exists=False,
+        help="Path to the alignment table. Defaults to <dataset root>/align.json.",
+    ),
 ) -> Optional[List[np.ndarray]]:
     """Apply adapters to files sampled from the dataset.
 
@@ -360,33 +488,25 @@ def adapt(
     a summary is printed.
     """
 
-    cfg: Settings = ctx.obj
+    settings = _get_settings(ctx)
 
-    adapter_name = adapter or cfg.adapter.name
-    pr_min = pr_min if pr_min is not None else getattr(cfg.adapter, "pr_min", None)
-    pr_max = pr_max if pr_max is not None else getattr(cfg.adapter, "pr_max", None)
-    n = n if n is not None else getattr(cfg.adapter, "n", 1)
-    plot = plot if plot is not None else getattr(cfg.adapter, "plot", False)
+    adapter_name = adapter or settings.adapter.name
+    pr_min = settings.adapter.pr_min if pr_min is None else pr_min
+    pr_max = settings.adapter.pr_max if pr_max is None else pr_max
+    n = settings.adapter.n if n is None else n
+    plot = settings.adapter.plot if plot is None else plot
 
     adapter_obj = get_adapter(adapter_name)
-    fs = cfg.adapter.period_est.fs
-    f0 = cfg.adapter.period_est.f0
+    fs = settings.adapter.period_est.fs
+    f0 = settings.adapter.period_est.f0
 
-    root_cfg = getattr(cfg.dataset, "root", None)
-    if isinstance(root_cfg, str):
-        root_path = Path(root_cfg)
-    else:
-        root_path = Path(getattr(root_cfg, "ostream", "."))
+    root_path = Path(dataset_root) if dataset_root else _dataset_root(settings)
 
-    # Location of alignment table exported by ``align`` command
-    align_table = getattr(cfg.adapter, "align_table", None)
-    if align_table is None:
-        align_table = root_path / "align.json"
-    align_table = Path(align_table)
-    if not align_table.exists():
-        raise typer.BadParameter(f"alignment table not found: {align_table}")
+    align_path = _resolve_align_table(settings, root_path, align_table)
+    if not align_path.exists():
+        raise typer.BadParameter(f"alignment table not found: {align_path}")
 
-    with open(align_table, "r", encoding="utf8") as fh:
+    with open(align_path, "r", encoding="utf8") as fh:
         rows = json.load(fh)
 
     file_pressure: Dict[str, float] = {}
@@ -406,7 +526,7 @@ def adapt(
         typer.echo("No files matched the requested pressure range")
         return None
 
-    seed = getattr(cfg.adapter, "seed", None)
+    seed = settings.adapter.seed
     rng = random.Random(seed)
     items = list(file_pressure.items())
     if n < len(items):
@@ -424,8 +544,8 @@ def adapt(
         adapter_out = adapter_obj.layer2(cycles, fs=fs)
         first_key = next(iter(adapter_out))
         result_arr = adapter_out[first_key]
-        if cfg.adapter.output_length:
-            result_arr = result_arr[..., : cfg.adapter.output_length]
+        if settings.adapter.output_length:
+            result_arr = result_arr[..., : settings.adapter.output_length]
         outputs.append(result_arr)
         typer.echo(
             f"processed {o_path.name}: adapter={adapter_name} output_shape={result_arr.shape} pressure={pressure_value}"
@@ -451,17 +571,17 @@ def adapt(
 def viz(ctx: typer.Context, signal: str) -> None:
     """Visualise ``signal`` using matplotlib if available."""
 
-    cfg: Settings = ctx.obj
+    settings = _get_settings(ctx)
     data = np.load(signal)
     try:  # pragma: no cover - optional dependency
         import matplotlib.pyplot as plt
 
         plt.figure()
         plt.plot(data)
-        plt.title(getattr(cfg.viz, "title", "Signal"))
+        plt.title(settings.viz.title)
         plt.xlabel("Sample")
         plt.ylabel("Amplitude")
-        save_path = getattr(cfg.viz, "save", None)
+        save_path = settings.viz.save
         if save_path:
             plt.savefig(save_path)
         else:
