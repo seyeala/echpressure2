@@ -5,14 +5,14 @@ from echopress.config import Settings, load_settings
 
 
 def test_from_env(monkeypatch):
-    monkeypatch.setenv("ECHOPRESS_CALIBRATION_ALPHA", "2.5")
-    s = Settings.from_env()
-    assert s.calibration.alpha[0] == 2.5
+    monkeypatch.setenv("ECHOPRESS_CALIBRATION__ALPHA", "2.5")
+    s = Settings()
+    assert s.calibration.alpha == [2.5]
 
 
 def test_from_env_ingest_patterns(monkeypatch):
-    monkeypatch.setenv("ECHOPRESS_INGEST_PSTREAM_CSV_PATTERNS", "foo,bar")
-    s = Settings.from_env()
+    monkeypatch.setenv("ECHOPRESS_INGEST__PSTREAM_CSV_PATTERNS", "foo,bar")
+    s = Settings()
     assert s.ingest.pstream_csv_patterns == ["foo", "bar"]
 
 
