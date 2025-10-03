@@ -1,27 +1,130 @@
 from __future__ import annotations
 
-"""Command line interface for echopress using Typer and Hydra."""
+"""Command line interface for echopress using Typer."""
 
 from pathlib import Path
 from typing import Dict, List, Optional
 
-import hydra
+import json
+import logging
+import random
+
 import numpy as np
 import typer
-from omegaconf import DictConfig
+from pydantic import ValidationError
 
 from .adapters import get_adapter
 from .core.calibration import apply_calibration
 from .core.mapping import align_streams
 from .core.tables import File2PressureMap, OscFiles, Signals, export_tables
-from .config import Settings
+from .config import Settings, load_settings
 from .ingest import DatasetIndexer, load_ostream, read_pstream
-import json
-import random
-import logging
 
 app = typer.Typer(help="Utilities for the echopress project")
 logger = logging.getLogger(__name__)
+
+
+def _parse_override_value(raw: str) -> object:
+    lower = raw.lower()
+    if lower in {"true", "false"}:
+        return lower == "true"
+    if lower in {"null", "none"}:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        pass
+    try:
+        return float(raw)
+    except ValueError:
+        pass
+    if raw.startswith("[") or raw.startswith("{"):
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            raise typer.BadParameter(f"invalid JSON override value: {raw}") from None
+    return raw
+
+
+def _ensure_path(settings: Settings, keys: List[str]) -> None:
+    current: object = settings
+    for key in keys[:-1]:
+        if isinstance(current, dict):
+            if key not in current:
+                raise typer.BadParameter(f"unknown configuration key: {'.'.join(keys)}")
+            current = current[key]
+        else:
+            if not hasattr(current, key):
+                raise typer.BadParameter(f"unknown configuration key: {'.'.join(keys)}")
+            current = getattr(current, key)
+            if current is None:
+                current = {}
+    last = keys[-1]
+    if isinstance(current, dict):
+        if last not in current:
+            raise typer.BadParameter(f"unknown configuration key: {'.'.join(keys)}")
+    elif not hasattr(current, last):
+        raise typer.BadParameter(f"unknown configuration key: {'.'.join(keys)}")
+
+
+def _apply_override(data: Dict[str, object], keys: List[str], value: object) -> None:
+    target = data
+    for key in keys[:-1]:
+        existing = target.get(key)
+        if not isinstance(existing, dict):
+            existing = {}
+            target[key] = existing
+        target = existing
+    target[keys[-1]] = value
+
+
+@app.callback()
+def init(
+    ctx: typer.Context,
+    config: Optional[Path] = typer.Option(
+        None,
+        "--config",
+        dir_okay=False,
+        file_okay=True,
+        exists=False,
+        help="Path to a YAML or JSON configuration file.",
+    ),
+    set_overrides: List[str] = typer.Option(
+        [],
+        "--set",
+        help="Override configuration values using dotted paths, e.g. dataset.root=/data",
+    ),
+) -> None:
+    """Initialise the Typer context with validated settings."""
+
+    if config is not None and not config.exists():
+        raise typer.BadParameter(f"configuration file not found: {config}")
+
+    try:
+        settings = load_settings(config) if config else Settings()
+    except (FileNotFoundError, RuntimeError, TypeError, json.JSONDecodeError) as exc:
+        raise typer.BadParameter(f"failed to load configuration: {exc}") from exc
+
+    if set_overrides:
+        data = settings.model_dump()
+        for override in set_overrides:
+            if "=" not in override:
+                raise typer.BadParameter(
+                    "overrides must be of the form --set section.key=value"
+                )
+            key, raw_value = override.split("=", 1)
+            if not key:
+                raise typer.BadParameter("override key cannot be empty")
+            keys = key.split(".")
+            _ensure_path(settings, keys)
+            value = _parse_override_value(raw_value)
+            _apply_override(data, keys, value)
+        try:
+            settings = Settings.model_validate(data)
+        except ValidationError as exc:
+            raise typer.BadParameter(f"invalid configuration override: {exc}") from exc
+
+    ctx.obj = settings
 
 
 @app.command()
@@ -36,7 +139,7 @@ def index(
     by other commands to avoid repeatedly walking the dataset tree.
     """
 
-    cfg: DictConfig = ctx.obj
+    cfg: Settings = ctx.obj
     root_cfg = getattr(cfg.dataset, "root", None)
     root_path: Path
     if isinstance(root_cfg, str):
@@ -65,7 +168,7 @@ def index(
 def ingest(ctx: typer.Context) -> None:
     """Load O- and P-streams as specified by the dataset config."""
 
-    cfg: DictConfig = ctx.obj
+    cfg: Settings = ctx.obj
     ostream = load_ostream(cfg.dataset.ostream)
     pstream = list(read_pstream(cfg.dataset.pstream))
     typer.echo(
@@ -81,7 +184,7 @@ def calibrate(
 ) -> None:
     """Apply calibration coefficients to a numeric array."""
 
-    cfg: DictConfig = ctx.obj
+    cfg: Settings = ctx.obj
     data = np.loadtxt(input, delimiter=",") if input.endswith(".csv") else np.load(
         input
     )
@@ -131,7 +234,7 @@ def align(
     ``--base-year`` to forward these parameters to :func:`load_ostream`.
     """
 
-    cfg: DictConfig = ctx.obj
+    cfg: Settings = ctx.obj
     root = Path(root)
     debug = getattr(ctx.obj, "debug", False) or debug
 
@@ -257,7 +360,7 @@ def adapt(
     a summary is printed.
     """
 
-    cfg: DictConfig = ctx.obj
+    cfg: Settings = ctx.obj
 
     adapter_name = adapter or cfg.adapter.name
     pr_min = pr_min if pr_min is not None else getattr(cfg.adapter, "pr_min", None)
@@ -348,18 +451,19 @@ def adapt(
 def viz(ctx: typer.Context, signal: str) -> None:
     """Visualise ``signal`` using matplotlib if available."""
 
-    cfg: DictConfig = ctx.obj
+    cfg: Settings = ctx.obj
     data = np.load(signal)
     try:  # pragma: no cover - optional dependency
         import matplotlib.pyplot as plt
 
         plt.figure()
         plt.plot(data)
-        plt.title(cfg.viz.get("title", "Signal"))
+        plt.title(getattr(cfg.viz, "title", "Signal"))
         plt.xlabel("Sample")
         plt.ylabel("Amplitude")
-        if cfg.viz.get("save"):
-            plt.savefig(cfg.viz.save)
+        save_path = getattr(cfg.viz, "save", None)
+        if save_path:
+            plt.savefig(save_path)
         else:
             plt.show()
     except Exception:  # pragma: no cover - graceful fallback
@@ -367,14 +471,10 @@ def viz(ctx: typer.Context, signal: str) -> None:
         typer.echo(f"mean={float(np.mean(data)):.3f} std={float(np.std(data)):.3f}")
 
 
-CONFIG_DIR = Path(__file__).resolve().parent.parent.parent / "conf"
+def main() -> None:
+    """Execute the Typer application."""
 
-
-@hydra.main(config_path=str(CONFIG_DIR), config_name="config", version_base=None)
-def main(cfg: DictConfig) -> None:
-    """Entrypoint executed by Hydra which dispatches to the Typer app."""
-
-    app(obj=cfg)
+    app()
 
 
 if __name__ == "__main__":
