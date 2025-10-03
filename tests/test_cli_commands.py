@@ -1,9 +1,9 @@
 import json
 import numpy as np
 from typer.testing import CliRunner
-from omegaconf import OmegaConf
 
 from echopress.cli import app
+from echopress.config import Settings
 
 
 def make_cfg(tmp_path):
@@ -17,7 +17,7 @@ def make_cfg(tmp_path):
     p_path = tmp_path / "voltprsr001.csv"
     p_path.write_text("timestamp,pressure\n0,10\n1,11\n2,12\n")
     align_path = tmp_path / "align.json"
-    cfg = OmegaConf.create(
+    cfg = Settings.model_validate(
         {
             "dataset": {
                 "root": str(tmp_path),

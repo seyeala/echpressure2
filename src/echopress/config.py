@@ -126,6 +126,8 @@ class DatasetSettings(SectionModel):
         "ISO-8601, HH:MM:SS[.ffffff], floating-point seconds since the Unix epoch,\n"
         "or Mxx-Dxx-Hxx-Mxx-Sxx-U.xxx"
     )
+    ostream: str | None = None
+    pstream: str | None = None
 
 
 class AlignSettings(SectionModel):
