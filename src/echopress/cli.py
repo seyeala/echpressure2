@@ -350,8 +350,7 @@ def align(
         raise typer.BadParameter(f"dataset root not found: {base_root}")
 
     align_cfg = settings.align
-    window_mode_source = ctx.get_parameter_source("window_mode")
-    if window_mode_source == ParameterSource.DEFAULT:
+    if ctx.get_parameter_source("window_mode") is ParameterSource.DEFAULT:
         window_mode = align_cfg.window_mode
     if duration is None:
         duration = align_cfg.duration
@@ -496,8 +495,7 @@ def adapt(
     pr_min = settings.adapter.pr_min if pr_min is None else pr_min
     pr_max = settings.adapter.pr_max if pr_max is None else pr_max
     n = settings.adapter.n if n is None else n
-    plot_source = ctx.get_parameter_source("plot")
-    if plot_source == ParameterSource.DEFAULT:
+    if ctx.get_parameter_source("plot") is ParameterSource.DEFAULT:
         plot = settings.adapter.plot
 
     adapter_obj = get_adapter(adapter_name)
