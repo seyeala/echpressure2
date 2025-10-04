@@ -34,8 +34,8 @@ def _is_pstream_csv(path: Path, patterns: Iterable[str] | None) -> bool:
     if path.suffix.lower() != ".csv":
         return False
     if not patterns:
-        # Sensible default for this repo
-        patterns = ("voltprsr",)
+        # Sensible defaults for this repo
+        patterns = ("voltprsr", "ai_log")
     stem = path.stem
     stem_lower = stem.lower()
     for pattern in patterns:

@@ -105,7 +105,9 @@ class QualitySettings(SectionModel):
 class IngestSettings(SectionModel):
     """Options controlling dataset ingestion."""
 
-    pstream_csv_patterns: list[str] = Field(default_factory=lambda: ["voltprsr"])
+    pstream_csv_patterns: list[str] = Field(
+        default_factory=lambda: ["voltprsr", "ai_log"]
+    )
 
     @field_validator("pstream_csv_patterns", mode="before")
     @classmethod

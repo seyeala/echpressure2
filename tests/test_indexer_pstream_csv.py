@@ -12,6 +12,16 @@ def test_dataset_indexer_picks_up_voltprsr_csv(tmp_path):
     assert sid not in indexer.ostreams
 
 
+def test_dataset_indexer_picks_up_ai_log_csv(tmp_path):
+    csv_path = tmp_path / "ai_log.csv"
+    csv_path.write_text("timestamp\n0.0\n")
+    indexer = DatasetIndexer(tmp_path)
+    sid = "ai_log"
+    assert sid in indexer.pstreams
+    assert csv_path in indexer.pstreams[sid]
+    assert sid not in indexer.ostreams
+
+
 def test_dataset_indexer_picks_up_multiple_patterns(tmp_path):
     (tmp_path / "voltprsr001.csv").write_text("timestamp\n0.0\n")
     (tmp_path / "anotherpstream002.csv").write_text("timestamp\n0.0\n")
