@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-"""Command line interface for echopress using Typer."""
-
 from pathlib import Path
 from typing import Dict, List, Optional
+
+"""Command line interface for echopress using Typer."""
 
 import json
 import logging
@@ -11,6 +11,7 @@ import random
 
 import numpy as np
 import typer
+from click.core import ParameterSource
 from pydantic import ValidationError
 
 from .adapters import get_adapter
@@ -302,8 +303,8 @@ def align(
     ),
     export: Optional[Path] = typer.Option(None, "--export", "-e"),
     debug: bool = typer.Option(False, "--debug", help="Show tracebacks on failure"),
-    window_mode: Optional[bool] = typer.Option(
-        None,
+    window_mode: bool = typer.Option(
+        False,
         "--window-mode/--no-window-mode",
         help="Treat O-streams as capture windows with no channel data",
     ),
@@ -349,7 +350,8 @@ def align(
         raise typer.BadParameter(f"dataset root not found: {base_root}")
 
     align_cfg = settings.align
-    if window_mode is None:
+    window_mode_source = ctx.get_parameter_source("window_mode")
+    if window_mode_source == ParameterSource.DEFAULT:
         window_mode = align_cfg.window_mode
     if duration is None:
         duration = align_cfg.duration
@@ -457,7 +459,7 @@ def adapt(
     pr_max: Optional[float] = typer.Option(None, "--pr-max"),
     n: Optional[int] = typer.Option(None, "--n"),
     output: Optional[str] = typer.Option(None, "--output", "-o"),
-    plot: Optional[bool] = typer.Option(None, "--plot/--no-plot"),
+    plot: bool = typer.Option(False, "--plot/--no-plot"),
     dataset_root: Optional[Path] = typer.Option(
         None,
         "--dataset-root",
@@ -494,7 +496,9 @@ def adapt(
     pr_min = settings.adapter.pr_min if pr_min is None else pr_min
     pr_max = settings.adapter.pr_max if pr_max is None else pr_max
     n = settings.adapter.n if n is None else n
-    plot = settings.adapter.plot if plot is None else plot
+    plot_source = ctx.get_parameter_source("plot")
+    if plot_source == ParameterSource.DEFAULT:
+        plot = settings.adapter.plot
 
     adapter_obj = get_adapter(adapter_name)
     fs = settings.adapter.period_est.fs
