@@ -20,6 +20,7 @@ from .core.mapping import align_streams
 from .core.tables import File2PressureMap, OscFiles, Signals, export_tables
 from .config import Settings, load_settings
 from .ingest import DatasetIndexer, load_ostream, read_pstream
+from ._typer import bad_parameter
 
 app = typer.Typer(help="Utilities for the echopress project")
 logger = logging.getLogger(__name__)
@@ -156,7 +157,7 @@ def init(
     """Initialise the Typer context with validated settings."""
 
     if config is not None and not config.exists():
-        raise typer.BadParameter(f"configuration file not found: {config}")
+        bad_parameter(f"configuration file not found: {config}", param_hint="--config")
 
     base_settings: Optional[Settings] = None
     if ctx.obj is not None:
@@ -179,12 +180,13 @@ def init(
         data = settings.model_dump()
         for override in set_overrides:
             if "=" not in override:
-                raise typer.BadParameter(
-                    "overrides must be of the form --set section.key=value"
+                bad_parameter(
+                    "overrides must be of the form --set section.key=value",
+                    param_hint="--set",
                 )
             key, raw_value = override.split("=", 1)
             if not key:
-                raise typer.BadParameter("override key cannot be empty")
+                bad_parameter("override key cannot be empty", param_hint="--set")
             keys = key.split(".")
             _ensure_path(settings, keys)
             value = _parse_override_value(raw_value)
@@ -347,7 +349,9 @@ def align(
     else:
         base_root = _dataset_root(settings)
     if not base_root.exists():
-        raise typer.BadParameter(f"dataset root not found: {base_root}")
+        bad_parameter(
+            f"dataset root not found: {base_root}", param_hint="--dataset-root"
+        )
 
     align_cfg = settings.align
     if ctx.get_parameter_source("window_mode") is ParameterSource.DEFAULT:
@@ -506,7 +510,9 @@ def adapt(
 
     align_path = _resolve_align_table(settings, root_path, align_table)
     if not align_path.exists():
-        raise typer.BadParameter(f"alignment table not found: {align_path}")
+        bad_parameter(
+            f"alignment table not found: {align_path}", param_hint="--align-table"
+        )
 
     with open(align_path, "r", encoding="utf8") as fh:
         rows = json.load(fh)
