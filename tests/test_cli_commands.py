@@ -73,3 +73,16 @@ def test_index_align_adapt(tmp_path):
     assert out_path.exists()
     data = np.load(out_path)
     assert data.shape[0] == 1
+
+
+def test_align_missing_dataset_root_reports_option(tmp_path):
+    cfg, _ = make_cfg(tmp_path)
+    runner = CliRunner()
+    missing_root = tmp_path / "does-not-exist"
+
+    result = runner.invoke(
+        app, ["align", "--dataset-root", str(missing_root)], obj=cfg
+    )
+
+    assert result.exit_code != 0
+    assert "Invalid value for --dataset-root" in result.stdout
