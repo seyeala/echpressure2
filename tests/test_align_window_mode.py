@@ -7,6 +7,14 @@ from test_cli_commands import make_cfg
 
 def test_align_window_mode(tmp_path):
     cfg, align_path = make_cfg(tmp_path)
+    cfg = cfg.model_copy(
+        update={
+            "mapping": cfg.mapping.model_copy(update={"O_max": 0.0001}),
+            "quality": cfg.quality.model_copy(
+                update={"reject_if_Ealign_gt_Omax": True}
+            ),
+        }
+    )
     # remove default files from make_cfg
     (tmp_path / "s1.npz").unlink()
     (tmp_path / "voltprsr001.csv").unlink()

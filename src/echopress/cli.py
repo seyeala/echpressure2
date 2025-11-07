@@ -397,10 +397,18 @@ def align(
                 base_year=base_year,
             )
             pstream = list(read_pstream(p_path))
+            align_kwargs = {}
+            if window_mode and settings.quality.reject_if_Ealign_gt_Omax:
+                # Synthetic window captures do not contain signal samples, so the
+                # midpoint derived from timestamps may fall outside the tight
+                # tolerance configured for real data.  Disable strict rejection so
+                # we still emit a pressure mapping for downstream commands.
+                align_kwargs["reject_if_Ealign_gt_Omax"] = False
             result = align_streams(
                 ostream,
                 pstream,
                 settings=settings,
+                **align_kwargs,
             )
         except Exception as exc:
             msg = (
