@@ -86,3 +86,16 @@ def test_align_missing_dataset_root_reports_option(tmp_path):
 
     assert result.exit_code != 0
     assert "Invalid value for --dataset-root" in result.stdout
+
+
+def test_index_missing_dataset_root_reports_option(tmp_path):
+    cfg, _ = make_cfg(tmp_path)
+    runner = CliRunner()
+    missing_root = tmp_path / "does-not-exist"
+
+    result = runner.invoke(
+        app, ["index", "--dataset-root", str(missing_root)], obj=cfg
+    )
+
+    assert result.exit_code != 0
+    assert "Invalid value for --dataset-root" in result.stdout

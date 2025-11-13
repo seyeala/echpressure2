@@ -243,6 +243,11 @@ def index(
     settings = _get_settings(ctx)
     root_path = Path(dataset_root) if dataset_root else _dataset_root(settings)
 
+    if not root_path.exists():
+        bad_parameter(
+            f"dataset root not found: {root_path}", param_hint="--dataset-root"
+        )
+
     indexer = DatasetIndexer(root_path, settings=settings)
     data = {
         "pstreams": {sid: [str(p) for p in paths] for sid, paths in indexer.pstreams.items()},
