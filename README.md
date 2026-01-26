@@ -143,3 +143,12 @@ python -m echopress.cli --config config/example.yaml adapt --n 8 --output featur
 The `Settings` container inherits from Pydantic's `BaseSettings`, so creating an
 instance (`Settings()`) automatically applies environment overrides. Use
 `echopress.config.load_settings` to load JSON/YAML files programmatically.
+
+## DVC on Colab (AWS credentials)
+
+When using DVC with AWS-backed remotes in Google Colab, set the following
+environment variables before running DVC commands:
+
+* `AWS_ACCESS_KEY_ID`
+* `AWS_SECRET_ACCESS_KEY`
+* `AWS_DEFAULT_REGION`
