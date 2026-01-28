@@ -45,8 +45,13 @@ print(exp.timestamps)
 Passing `window_mode=False` enables robust parsing for stored data:
 
 * **NPZ** – arrays named `timestamps`, `channels`, and optional metadata
-  fields.
+  fields. NPZ also accepts `mV` as a channel alias and `time_ns`/`dt_ns` as
+  timestamp sources (nanosecond absolute time or per-sample delta,
+  respectively).
 * **JSON/NDJSON/TXT** – keys `timestamps`, `channels`, and any extra metadata.
 * **CSV** – headered or headerless matrices. When `override_file_timestamps`
   is true (default), timestamps are synthesised from `start_time` and
   `sampling_dt` rather than taken from the file.
+
+These aliases are mapped automatically by `load_ostream` when `channels` or
+`timestamps` are missing or empty.
