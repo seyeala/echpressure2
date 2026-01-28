@@ -104,6 +104,19 @@ def load_ostream(
         timestamps = np.asarray(data.get("timestamps", []), dtype=float)
         channels = np.asarray(data.get("channels", []), dtype=float)
         meta = {k: data[k] for k in data.files if k not in {"session_id", "timestamps", "channels"}}
+        if channels.size == 0:
+            for alt_key in ("mV", "signal"):
+                if alt_key in data:
+                    channels = np.asarray(data[alt_key], dtype=float).reshape(-1, 1)
+                    meta["channels_source"] = alt_key
+                    break
+        if timestamps.size == 0:
+            if "time_ns" in data:
+                timestamps = np.asarray(data["time_ns"], dtype=float) / 1e9
+            elif "dt_ns" in data:
+                dt_ns = float(np.asarray(data["dt_ns"], dtype=float).reshape(-1)[0])
+                n = channels.shape[0]
+                timestamps = np.arange(n, dtype=float) * (dt_ns / 1e9)
         return OStream(session_id, timestamps, channels, meta)
 
     if path.suffix in {".json", ".ndjson", ".txt"}:
