@@ -554,6 +554,8 @@ def adapt(
         items = rng.sample(items, n)
 
     outputs: List[np.ndarray] = []
+    skipped = 0
+    cycle_len = fs / f0 if f0 else None
     for path_str, pressure_value in items:
         o_path = Path(path_str)
         ostream = load_ostream(o_path)
@@ -561,6 +563,25 @@ def adapt(
         if data.ndim == 2:
             data = data[:, 0]
         data = data.reshape(-1)
+        if data.size == 0:
+            typer.secho(
+                f"Skipping {o_path.name}: file has no usable samples",
+                err=True,
+                fg=typer.colors.YELLOW,
+            )
+            skipped += 1
+            continue
+        if cycle_len is not None and data.size < cycle_len:
+            typer.secho(
+                (
+                    f"Skipping {o_path.name}: {data.size} samples is shorter than one "
+                    f"cycle ({cycle_len:.1f} samples)"
+                ),
+                err=True,
+                fg=typer.colors.YELLOW,
+            )
+            skipped += 1
+            continue
         cycles = adapter_obj.layer1(data, fs=fs, f0=f0)
         adapter_out = adapter_obj.layer2(cycles, fs=fs)
         first_key = next(iter(adapter_out))
@@ -579,7 +600,21 @@ def adapt(
             except Exception:  # pragma: no cover - graceful fallback
                 typer.echo("Plotting unavailable")
 
+    if skipped:
+        typer.secho(
+            f"Skipped {skipped} file(s) due to insufficient samples.",
+            err=True,
+            fg=typer.colors.YELLOW,
+        )
+
     if output:
+        if not outputs:
+            typer.secho(
+                "No feature arrays to save (all files skipped).",
+                err=True,
+                fg=typer.colors.YELLOW,
+            )
+            return None
         out_path = Path(output)
         np.save(out_path, np.stack(outputs))
         typer.echo(f"saved {len(outputs)} feature arrays to {out_path}")
@@ -620,4 +655,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
