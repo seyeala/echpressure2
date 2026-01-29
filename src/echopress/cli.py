@@ -476,6 +476,16 @@ def adapt(
     n: Optional[int] = typer.Option(None, "--n"),
     output: Optional[str] = typer.Option(None, "--output", "-o"),
     plot: bool = typer.Option(False, "--plot/--no-plot"),
+    plot_save: Optional[Path] = typer.Option(
+        None,
+        "--plot-save",
+        help="Save adapter plots to this path (or directory) to avoid blocking.",
+    ),
+    plot_show: bool = typer.Option(
+        True,
+        "--plot-show/--no-plot-show",
+        help="Display plots interactively (disable for headless runs).",
+    ),
     dataset_root: Optional[Path] = typer.Option(
         None,
         "--dataset-root",
@@ -500,6 +510,8 @@ def adapt(
     A random subset of ``n`` files is processed using the adapter selected by
     ``--adapter``.  When ``--plot`` is provided the raw signal and adapter
     outputs are visualised using helper functions from :mod:`viz.plot_adapter`.
+    Use ``--plot-save`` or ``--no-plot-show`` in Colab/CLI sessions to avoid
+    blocking on GUI backends.
     When ``--output`` is supplied the resulting feature vectors are written to
     a NumPy file at the given path.  The processed NumPy arrays are returned to
     the caller when executed from Python and ``--output`` is omitted, otherwise
@@ -596,7 +608,19 @@ def adapt(
             try:  # pragma: no cover - optional dependency
                 from viz.plot_adapter import plot_adapter as _plot_adapter
 
-                _plot_adapter(data, result_arr)
+                save_path = None
+                if plot_save:
+                    if plot_save.exists() and plot_save.is_dir():
+                        plot_dir = plot_save
+                        plot_dir.mkdir(parents=True, exist_ok=True)
+                        save_path = plot_dir / f"{o_path.stem}_adapter.png"
+                    elif plot_save.suffix == "":
+                        plot_dir = plot_save
+                        plot_dir.mkdir(parents=True, exist_ok=True)
+                        save_path = plot_dir / f"{o_path.stem}_adapter.png"
+                    else:
+                        save_path = plot_save
+                _plot_adapter(data, result_arr, save=save_path, show=plot_show)
             except Exception:  # pragma: no cover - graceful fallback
                 typer.echo("Plotting unavailable")
 

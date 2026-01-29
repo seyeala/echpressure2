@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Sequence
 
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -38,14 +39,19 @@ def plot_series(ax: plt.Axes, series: Sequence[float], label: str | None = None,
         ax.legend()
 
 
+def _interactive_backend() -> bool:
+    backend = matplotlib.get_backend()
+    return backend in matplotlib.rcsetup.interactive_bk
+
+
 def save_or_show(fig: plt.Figure, save: str | Path | None = None, show: bool = False) -> None:
     """Save ``fig`` to ``save`` or display it interactively.
 
     If ``save`` is ``None`` the figure will only be shown when ``show`` is
-    True.  When both are unset the figure is shown by default to give quick
-    feedback during inspection.
+    True and the active backend is interactive.  This keeps non-interactive
+    contexts from blocking while still allowing GUI-driven inspection.
     """
     if save:
         fig.savefig(save, bbox_inches="tight")
-    if show or not save:
+    if show and _interactive_backend():
         plt.show()
