@@ -5,9 +5,23 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Sequence
 
+import logging
+
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
+
+logger = logging.getLogger(__name__)
+_PLOT_WARNING_EMITTED = False
+_HEADLESS_BACKENDS = {
+    "agg",
+    "cairo",
+    "pdf",
+    "pgf",
+    "ps",
+    "svg",
+    "template",
+}
 
 
 def load_array(path: str | Path) -> np.ndarray:
@@ -44,6 +58,27 @@ def _interactive_backend() -> bool:
     return backend in matplotlib.rcsetup.interactive_bk
 
 
+def _headless_backend() -> bool:
+    backend = matplotlib.get_backend()
+    normalized = backend.lower()
+    if normalized.startswith("module://"):
+        normalized = normalized.split("module://", 1)[1]
+    normalized = normalized.split(".")[-1]
+    return normalized in _HEADLESS_BACKENDS
+
+
+def _warn_on_headless_show() -> None:
+    global _PLOT_WARNING_EMITTED
+    if _PLOT_WARNING_EMITTED:
+        return
+    if _headless_backend():
+        logger.warning(
+            "Plotting uses plt.show() and may block in CLI/headless environments. "
+            "Use --plot-save or --no-plot-show."
+        )
+        _PLOT_WARNING_EMITTED = True
+
+
 def save_or_show(fig: plt.Figure, save: str | Path | None = None, show: bool = False) -> None:
     """Save ``fig`` to ``save`` or display it interactively.
 
@@ -53,5 +88,7 @@ def save_or_show(fig: plt.Figure, save: str | Path | None = None, show: bool = F
     """
     if save:
         fig.savefig(save, bbox_inches="tight")
+    if show:
+        _warn_on_headless_show()
     if show and _interactive_backend():
         plt.show()
