@@ -18,6 +18,7 @@ def plot_adapter(
     input_label: str | None = None,
     output_label: str | None = None,
     save: str | None = None,
+    max_points: int | None = None,
     show: bool = True,
 ) -> None:
     """Visualise ``inp`` alongside ``out``.
@@ -31,8 +32,28 @@ def plot_adapter(
         Optional axis labels for the two series.
     save, show:
         Behaviour flags forwarded to :func:`save_or_show`.
+    max_points:
+        Optional maximum number of points to plot for each series.  Long
+        series are downsampled to avoid slow rendering.
     """
 
+    def _coerce_1d(series: np.ndarray) -> np.ndarray:
+        arr = np.asarray(series)
+        if arr.ndim == 0:
+            return arr.reshape(1)
+        if arr.ndim == 1:
+            return arr
+        flattened = arr.reshape(arr.shape[0], -1)
+        return flattened.mean(axis=1)
+
+    def _downsample(series: np.ndarray, limit: int | None) -> np.ndarray:
+        if not limit or series.size <= limit:
+            return series
+        stride = int(np.ceil(series.size / limit))
+        return series[::stride]
+
+    inp = _downsample(_coerce_1d(inp), max_points)
+    out = _downsample(_coerce_1d(out), max_points)
     n = min(len(inp), len(out))
     inp = inp[:n]
     out = out[:n]

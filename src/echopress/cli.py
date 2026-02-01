@@ -481,6 +481,11 @@ def adapt(
         "--plot-save",
         help="Save adapter plots to this path (or directory) to avoid blocking.",
     ),
+    plot_max_points: Optional[int] = typer.Option(
+        None,
+        "--plot-max-points",
+        help="Downsample plots to at most this many points per series.",
+    ),
     plot_show: bool = typer.Option(
         True,
         "--plot-show/--no-plot-show",
@@ -511,7 +516,8 @@ def adapt(
     ``--adapter``.  When ``--plot`` is provided the raw signal and adapter
     outputs are visualised using helper functions from :mod:`viz.plot_adapter`.
     Use ``--plot-save`` or ``--no-plot-show`` in Colab/CLI sessions to avoid
-    blocking on GUI backends.
+    blocking on GUI backends. ``--plot-max-points`` can be used to downsample
+    long series before plotting.
     When ``--output`` is supplied the resulting feature vectors are written to
     a NumPy file at the given path.  The processed NumPy arrays are returned to
     the caller when executed from Python and ``--output`` is omitted, otherwise
@@ -526,6 +532,9 @@ def adapt(
     n = settings.adapter.n if n is None else n
     if ctx.get_parameter_source("plot") is ParameterSource.DEFAULT:
         plot = settings.adapter.plot
+    plot_max_points = (
+        settings.adapter.plot_max_points if plot_max_points is None else plot_max_points
+    )
 
     adapter_obj = get_adapter(adapter_name)
     fs = settings.adapter.period_est.fs
@@ -620,7 +629,13 @@ def adapt(
                         save_path = plot_dir / f"{o_path.stem}_adapter.png"
                     else:
                         save_path = plot_save
-                _plot_adapter(data, result_arr, save=save_path, show=plot_show)
+                _plot_adapter(
+                    data,
+                    result_arr,
+                    save=save_path,
+                    show=plot_show,
+                    max_points=plot_max_points,
+                )
             except Exception:  # pragma: no cover - graceful fallback
                 typer.echo("Plotting unavailable")
 
