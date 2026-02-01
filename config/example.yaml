@@ -58,6 +58,7 @@ adapter:
   pr_max: null
   n: 1
   plot: false
+  plot_max_points: 20000
   align_table: align.json
   seed: 0
 
