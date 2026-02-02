@@ -80,6 +80,29 @@ def _apply_override(data: Dict[str, object], keys: List[str], value: object) -> 
     target[keys[-1]] = value
 
 
+def _apply_overrides(settings: Settings, overrides: List[str]) -> Settings:
+    if not overrides:
+        return settings
+    data = settings.model_dump()
+    for override in overrides:
+        if "=" not in override:
+            bad_parameter(
+                "overrides must be of the form --set section.key=value",
+                param_hint="--set",
+            )
+        key, raw_value = override.split("=", 1)
+        if not key:
+            bad_parameter("override key cannot be empty", param_hint="--set")
+        keys = key.split(".")
+        _ensure_path(settings, keys)
+        value = _parse_override_value(raw_value)
+        _apply_override(data, keys, value)
+    try:
+        return Settings.model_validate(data)
+    except ValidationError as exc:
+        raise typer.BadParameter(f"invalid configuration override: {exc}") from exc
+
+
 def _ensure_settings(obj: object) -> Settings:
     if isinstance(obj, Settings):
         return obj
@@ -176,25 +199,7 @@ def init(
     except (FileNotFoundError, RuntimeError, TypeError, json.JSONDecodeError) as exc:
         raise typer.BadParameter(f"failed to load configuration: {exc}") from exc
 
-    if set_overrides:
-        data = settings.model_dump()
-        for override in set_overrides:
-            if "=" not in override:
-                bad_parameter(
-                    "overrides must be of the form --set section.key=value",
-                    param_hint="--set",
-                )
-            key, raw_value = override.split("=", 1)
-            if not key:
-                bad_parameter("override key cannot be empty", param_hint="--set")
-            keys = key.split(".")
-            _ensure_path(settings, keys)
-            value = _parse_override_value(raw_value)
-            _apply_override(data, keys, value)
-        try:
-            settings = Settings.model_validate(data)
-        except ValidationError as exc:
-            raise typer.BadParameter(f"invalid configuration override: {exc}") from exc
+    settings = _apply_overrides(settings, set_overrides)
 
     if dataset_root is not None:
         settings = settings.model_copy(
@@ -491,6 +496,11 @@ def adapt(
         "--plot-show/--no-plot-show",
         help="Display plots interactively (disable for headless runs).",
     ),
+    set_overrides: List[str] = typer.Option(
+        [],
+        "--set",
+        help="Override configuration values using dotted paths, e.g. adapter.period_est.fs=1000000",
+    ),
     dataset_root: Optional[Path] = typer.Option(
         None,
         "--dataset-root",
@@ -525,6 +535,7 @@ def adapt(
     """
 
     settings = _get_settings(ctx)
+    settings = _apply_overrides(settings, set_overrides)
 
     adapter_name = adapter or settings.adapter.name
     pr_min = settings.adapter.pr_min if pr_min is None else pr_min
