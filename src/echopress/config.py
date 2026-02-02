@@ -157,6 +157,7 @@ class AdapterSettings(SectionModel):
     pr_max: float | None = None
     n: int = 1
     plot: bool = False
+    plot_max_points: int = 20000
     align_table: str = Field(default_factory=lambda: str(Path(DatasetSettings().root) / "align.json"))
     seed: int = 0
 
