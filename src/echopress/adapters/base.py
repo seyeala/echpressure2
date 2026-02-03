@@ -66,6 +66,22 @@ def validate_adapter(adapter: Adapter) -> None:
 # Layer-1 mapping utilities
 # ---------------------------------------------------------------------------
 
+def detect_peaks(signal: np.ndarray, min_distance: int) -> np.ndarray:
+    """Return indices of local maxima separated by ``min_distance`` samples."""
+    if signal.ndim != 1:
+        raise ValueError("signal must be one-dimensional")
+    if min_distance < 1:
+        raise ValueError("min_distance must be at least 1")
+    peaks = []
+    last_peak = -min_distance
+    for idx in range(1, signal.size - 1):
+        if signal[idx] > signal[idx - 1] and signal[idx] >= signal[idx + 1]:
+            if idx - last_peak >= min_distance:
+                peaks.append(idx)
+                last_peak = idx
+    return np.asarray(peaks, dtype=int)
+
+
 def cycle_synchronous_map(signal: np.ndarray, fs: float, f0: float) -> np.ndarray:
     """Segment ``signal`` into cycle-synchronous slices.
 
