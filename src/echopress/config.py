@@ -152,6 +152,7 @@ class PlstnSettings(SectionModel):
 
     window_left: float | int | None = None
     window_right: float | int | None = None
+    resample_len: int | None = None
 
 
 class AdapterSettings(SectionModel):

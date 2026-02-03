@@ -16,9 +16,15 @@ import warnings
 class PlstnAdapter:
     name = "plstn"
 
-    def __init__(self, window_left: float | int | None = None, window_right: float | int | None = None) -> None:
+    def __init__(
+        self,
+        window_left: float | int | None = None,
+        window_right: float | int | None = None,
+        resample_len: int | None = None,
+    ) -> None:
         self.window_left = window_left
         self.window_right = window_right
+        self.resample_len = resample_len
 
     @staticmethod
     def _resolve_window_size(value: float | int | None, cycle_len: int, default_frac: float) -> int:
@@ -43,11 +49,16 @@ class PlstnAdapter:
             self.window_left = settings.adapter.plstn.window_left
         if self.window_right is None:
             self.window_right = settings.adapter.plstn.window_right
+        if self.resample_len is None:
+            self.resample_len = settings.adapter.plstn.resample_len
         w_left = self._resolve_window_size(self.window_left, cycle_len, default_frac=0.5)
         w_right = self._resolve_window_size(self.window_right, cycle_len, default_frac=0.5)
         window_len = w_left + w_right
         if window_len <= 0:
             raise ValueError("window length must be positive")
+        resample_len = window_len if self.resample_len is None else int(self.resample_len)
+        if resample_len <= 0:
+            raise ValueError("resample length must be positive")
         if signal.size < window_len:
             warnings.warn(
                 "Signal shorter than peak window length; falling back to fixed cycle slicing.",
@@ -76,8 +87,17 @@ class PlstnAdapter:
             if start_idx < 0 or end_idx > signal.size:
                 continue
             segment = signal[start_idx:end_idx]
-            if segment.size == window_len:
-                windows.append(segment)
+            if segment.size < 1:
+                continue
+            if segment.size == 1:
+                resampled = np.full(resample_len, segment[0], dtype=segment.dtype)
+            elif segment.size == resample_len:
+                resampled = segment.astype(float, copy=False)
+            else:
+                source_idx = np.linspace(0.0, 1.0, num=segment.size)
+                target_idx = np.linspace(0.0, 1.0, num=resample_len)
+                resampled = np.interp(target_idx, source_idx, segment).astype(float, copy=False)
+            windows.append(resampled)
         if not windows:
             warnings.warn(
                 "No valid peak-locked windows found; falling back to fixed "
