@@ -57,6 +57,7 @@ adapter:
   plstn:
     window_left: null
     window_right: null
+    resample_len: null
   pr_min: null
   pr_max: null
   n: 1
