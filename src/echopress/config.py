@@ -147,12 +147,20 @@ class PeriodEstimateSettings(SectionModel):
     f0: float = 1.0
 
 
+class PlstnSettings(SectionModel):
+    """Configuration for PLSTN peak windowing."""
+
+    window_left: float | int | None = None
+    window_right: float | int | None = None
+
+
 class AdapterSettings(SectionModel):
     """Configuration for adapter execution."""
 
     name: str = "cec"
     output_length: int = 0
     period_est: PeriodEstimateSettings = Field(default_factory=PeriodEstimateSettings)
+    plstn: "PlstnSettings" = Field(default_factory=lambda: PlstnSettings())
     pr_min: float | None = None
     pr_max: float | None = None
     n: int = 1
