@@ -116,7 +116,11 @@ class PlstnAdapter:
             return {"energies": wavelet_energies(cycles)}
         if self.name == "mfcc":
             return {"mfcc": mfcc_transform(cycles)}
-        return {"cycles": cycles}
+        if cycles.ndim == 1:
+            x_f = cycles.astype(float, copy=False)
+        else:
+            x_f = np.median(cycles, axis=0)
+        return {"x_F": x_f}
 
 
 register_adapter(PlstnAdapter())
