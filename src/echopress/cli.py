@@ -80,6 +80,29 @@ def _apply_override(data: Dict[str, object], keys: List[str], value: object) -> 
     target[keys[-1]] = value
 
 
+def _apply_overrides(settings: Settings, overrides: List[str]) -> Settings:
+    if not overrides:
+        return settings
+    data = settings.model_dump()
+    for override in overrides:
+        if "=" not in override:
+            bad_parameter(
+                "overrides must be of the form --set section.key=value",
+                param_hint="--set",
+            )
+        key, raw_value = override.split("=", 1)
+        if not key:
+            bad_parameter("override key cannot be empty", param_hint="--set")
+        keys = key.split(".")
+        _ensure_path(settings, keys)
+        value = _parse_override_value(raw_value)
+        _apply_override(data, keys, value)
+    try:
+        return Settings.model_validate(data)
+    except ValidationError as exc:
+        raise typer.BadParameter(f"invalid configuration override: {exc}") from exc
+
+
 def _ensure_settings(obj: object) -> Settings:
     if isinstance(obj, Settings):
         return obj
@@ -176,25 +199,7 @@ def init(
     except (FileNotFoundError, RuntimeError, TypeError, json.JSONDecodeError) as exc:
         raise typer.BadParameter(f"failed to load configuration: {exc}") from exc
 
-    if set_overrides:
-        data = settings.model_dump()
-        for override in set_overrides:
-            if "=" not in override:
-                bad_parameter(
-                    "overrides must be of the form --set section.key=value",
-                    param_hint="--set",
-                )
-            key, raw_value = override.split("=", 1)
-            if not key:
-                bad_parameter("override key cannot be empty", param_hint="--set")
-            keys = key.split(".")
-            _ensure_path(settings, keys)
-            value = _parse_override_value(raw_value)
-            _apply_override(data, keys, value)
-        try:
-            settings = Settings.model_validate(data)
-        except ValidationError as exc:
-            raise typer.BadParameter(f"invalid configuration override: {exc}") from exc
+    settings = _apply_overrides(settings, set_overrides)
 
     if dataset_root is not None:
         settings = settings.model_copy(
@@ -481,10 +486,20 @@ def adapt(
         "--plot-save",
         help="Save adapter plots to this path (or directory) to avoid blocking.",
     ),
+    plot_max_points: Optional[int] = typer.Option(
+        None,
+        "--plot-max-points",
+        help="Downsample plots to at most this many points per series.",
+    ),
     plot_show: bool = typer.Option(
         True,
         "--plot-show/--no-plot-show",
         help="Display plots interactively (disable for headless runs).",
+    ),
+    set_overrides: List[str] = typer.Option(
+        [],
+        "--set",
+        help="Override configuration values using dotted paths, e.g. adapter.period_est.fs=1000000",
     ),
     dataset_root: Optional[Path] = typer.Option(
         None,
@@ -511,7 +526,8 @@ def adapt(
     ``--adapter``.  When ``--plot`` is provided the raw signal and adapter
     outputs are visualised using helper functions from :mod:`viz.plot_adapter`.
     Use ``--plot-save`` or ``--no-plot-show`` in Colab/CLI sessions to avoid
-    blocking on GUI backends.
+    blocking on GUI backends. ``--plot-max-points`` can be used to downsample
+    long series before plotting.
     When ``--output`` is supplied the resulting feature vectors are written to
     a NumPy file at the given path.  The processed NumPy arrays are returned to
     the caller when executed from Python and ``--output`` is omitted, otherwise
@@ -519,6 +535,7 @@ def adapt(
     """
 
     settings = _get_settings(ctx)
+    settings = _apply_overrides(settings, set_overrides)
 
     adapter_name = adapter or settings.adapter.name
     pr_min = settings.adapter.pr_min if pr_min is None else pr_min
@@ -526,6 +543,9 @@ def adapt(
     n = settings.adapter.n if n is None else n
     if ctx.get_parameter_source("plot") is ParameterSource.DEFAULT:
         plot = settings.adapter.plot
+    plot_max_points = (
+        settings.adapter.plot_max_points if plot_max_points is None else plot_max_points
+    )
 
     adapter_obj = get_adapter(adapter_name)
     fs = settings.adapter.period_est.fs
@@ -620,7 +640,13 @@ def adapt(
                         save_path = plot_dir / f"{o_path.stem}_adapter.png"
                     else:
                         save_path = plot_save
-                _plot_adapter(data, result_arr, save=save_path, show=plot_show)
+                _plot_adapter(
+                    data,
+                    result_arr,
+                    save=save_path,
+                    show=plot_show,
+                    max_points=plot_max_points,
+                )
             except Exception:  # pragma: no cover - graceful fallback
                 typer.echo("Plotting unavailable")
 
