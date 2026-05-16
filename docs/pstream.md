@@ -1,11 +1,14 @@
 # P-stream files
 
 P-streams record pressure measurements alongside timestamps. Files are
-conventionally named `voltprsr{ID}.csv`—for example, `voltprsr001.csv`—so the
-`DatasetIndexer` can extract the identifier and catalog them. Filename
-patterns used to identify CSVs live in
+conventionally named `voltprsr{ID}.csv` or `ai_log{ID}.csv`—for example,
+`voltprsr001.csv` or `ai_log001.csv`—so the `DatasetIndexer` can extract the
+identifier and catalog them. Filename patterns used to identify CSVs live in
 `conf/ingest/default.yaml` under `pstream_csv_patterns` and may be extended to
 match additional naming schemes.
+
+For paired-line records and scalar pressure extraction, channel selectors are
+zero-based: `pressure.scalar_channel: 2` means physical channel 3.
 
 `read_pstream` parses three formats:
 
@@ -20,7 +23,7 @@ match additional naming schemes.
 ```python
 from echopress.ingest import DatasetIndexer, read_pstream
 
-# Locate files like 'voltprsr001.csv'
+# Locate files like 'voltprsr001.csv' or 'ai_log001.csv'
 indexer = DatasetIndexer("/data")
 pstream_file = indexer.first_pstream("001")
 

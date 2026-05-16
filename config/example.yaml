@@ -10,6 +10,7 @@ dataset:
 ingest:
   pstream_csv_patterns:
     - voltprsr
+    - ai_log
 
 mapping:
   tie_breaker: earliest
@@ -28,10 +29,11 @@ calibration:
     - 0.0
 
 pressure:
+  # Zero-based index; default 2 means physical channel 3.
   scalar_channel: 2
 
 units:
-  pressure: Pa
+  pressure: mmHg
   voltage: V
 
 timestamp:

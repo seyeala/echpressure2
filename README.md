@@ -12,7 +12,7 @@ formalised in `theory.pdf`.
 
  - **P-stream** – timestamped pressure measurements expressed in millimetres of
   mercury (mmHg). P-stream CSVs are conventionally named `voltprsr{ID}.csv`
-  and contain `timestamp,pressure` columns.
+  or `ai_log{ID}.csv` and contain `timestamp,pressure` columns.
 - **O-stream** – oscilloscope files containing uniformly sampled waveforms.
 
 Each O-stream file is mapped to the nearest P-stream timestamp, calibrated and
@@ -54,8 +54,8 @@ utils/ & types.py  shared utilities and data types
 ## Usage
 
 Once the CLI exposes the full pipeline, a typical flow looks like below.
-Commands accept traditional `.pstream` text files or `voltprsr*.csv`
-P-streams:
+Commands accept traditional `.pstream` text files or configured P-stream CSV
+patterns such as `voltprsr*.csv` and `ai_log*.csv`:
 
 ```bash
 # Build dataset indices from configured paths (supports .pstream and CSV)
@@ -80,9 +80,9 @@ Existing commands such as `ingest`, `calibrate` and `viz` remain available.
 
 ### P-stream CSVs
 
-Files like `voltprsr001.csv` hold `timestamp,pressure` pairs. The
-`DatasetIndexer` recognises the `voltprsr` prefix by default and indexes the
-trailing identifier. See [docs/dataset_indexer.md](docs/dataset_indexer.md) for session handling, case-insensitive lookups and pattern matching. `read_pstream` loads these CSVs and yields
+Files like `voltprsr001.csv` and `ai_log001.csv` hold `timestamp,pressure`
+pairs. The `DatasetIndexer` recognises the `voltprsr` and `ai_log` prefixes by
+default and indexes the trailing identifier. See [docs/dataset_indexer.md](docs/dataset_indexer.md) for session handling, case-insensitive lookups and pattern matching. `read_pstream` loads these CSVs and yields
 `PStreamRecord` objects with parsed timestamps and floating-point pressures.
 
 ```python
@@ -118,11 +118,12 @@ Settings can be supplied in three complementary ways:
 Key sections available in the settings schema include:
 
 * `dataset` – dataset root directory and timestamp metadata
-* `ingest` – patterns to recognise P-stream CSV files (default `['voltprsr']`,
-  matching names like `voltprsr*.csv`)
+* `ingest` – patterns to recognise P-stream CSV files (default `['voltprsr', 'ai_log']`,
+  matching names like `voltprsr*.csv` and `ai_log*.csv`)
 * `mapping` – alignment and derivative parameters
 * `calibration` – per-channel calibration coefficients
-* `pressure` – which channel contains scalar pressure data
+* `pressure` – which channel contains scalar pressure data; `pressure.scalar_channel`
+  is zero-based, so the default `2` means physical channel 3
 * `units` – display units for pressure and voltage
 * `timestamp` – parsing controls
 * `quality` – quality gates for downstream processing
