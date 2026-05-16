@@ -2,4 +2,5 @@
 # a simple substring or a regular expression.
 pstream_csv_patterns:
   - voltprsr
+  - ai_log
 
