@@ -1,6 +1,7 @@
 site_name: Echpressure
 nav:
   - Architecture: architecture.md
+  - Alignment Revision: alignment_revision.md
   - P-streams: pstream.md
   - Adapters:
       - CEC: adapters/cec.md
