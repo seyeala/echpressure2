@@ -76,6 +76,34 @@ no channel data are still recorded so their paths appear in the exported table.
 Downstream utilities like `adapt` read this table to locate files by pressure
 value.
 
+### Revising alignment tables
+
+Use the alignment-revision utilities to curate `align.json` rows before adapter
+execution. `flag-low-peak` can create a removal list for files whose waveform
+peak is not larger than a baseline absolute-amplitude average, and
+`revise-align` writes the filtered alignment table for all adapters to reuse.
+
+```bash
+python -m echopress.cli flag-low-peak \
+  --dataset-root /path/to/data \
+  --align-table align.json \
+  --output-list remove_low_peak.json \
+  --baseline-samples 5000 \
+  --threshold-multiplier 3
+
+python -m echopress.cli revise-align \
+  --align-table align.json \
+  --remove-list remove_low_peak.json \
+  --output align.revised.json \
+  --match-key path
+
+python -m echopress.cli adapt \
+  --dataset-root /path/to/data \
+  --align-table align.revised.json \
+  --adapter cec \
+  --output features.npy
+```
+
 Existing commands such as `ingest`, `calibrate` and `viz` remain available.
 
 ### P-stream CSVs

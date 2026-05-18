@@ -125,7 +125,9 @@ def _dataset_root(settings: Settings) -> Path:
     return Path(settings.dataset.root).expanduser()
 
 
-def _resolve_align_table(settings: Settings, base_root: Path, override: Optional[Path] = None) -> Path:
+def _resolve_align_table(
+    settings: Settings, base_root: Path, override: Optional[Path] = None
+) -> Path:
     if override is not None:
         align_path = override
     else:
@@ -204,13 +206,17 @@ def init(
     if dataset_root is not None:
         settings = settings.model_copy(
             update={
-                "dataset": settings.dataset.model_copy(update={"root": str(dataset_root)})
+                "dataset": settings.dataset.model_copy(
+                    update={"root": str(dataset_root)}
+                )
             }
         )
 
     if adapter_name is not None:
         settings = settings.model_copy(
-            update={"adapter": settings.adapter.model_copy(update={"name": adapter_name})}
+            update={
+                "adapter": settings.adapter.model_copy(update={"name": adapter_name})
+            }
         )
 
     if align_table is not None:
@@ -255,8 +261,12 @@ def index(
 
     indexer = DatasetIndexer(root_path, settings=settings)
     data = {
-        "pstreams": {sid: [str(p) for p in paths] for sid, paths in indexer.pstreams.items()},
-        "ostreams": {sid: [str(o) for o in paths] for sid, paths in indexer.ostreams.items()},
+        "pstreams": {
+            sid: [str(p) for p in paths] for sid, paths in indexer.pstreams.items()
+        },
+        "ostreams": {
+            sid: [str(o) for o in paths] for sid, paths in indexer.ostreams.items()
+        },
     }
 
     cache_path = Path(cache) if cache else root_path / "index.json"
@@ -293,8 +303,8 @@ def calibrate(
     """Apply calibration coefficients to a numeric array."""
 
     settings = _get_settings(ctx)
-    data = np.loadtxt(input, delimiter=",") if input.endswith(".csv") else np.load(
-        input
+    data = (
+        np.loadtxt(input, delimiter=",") if input.endswith(".csv") else np.load(input)
     )
     calibrated = apply_calibration(data, settings=settings)
     if output:
@@ -388,7 +398,9 @@ def align(
             },
         }
 
-    all_pstreams = [p for paths in index_data.get("pstreams", {}).values() for p in paths]
+    all_pstreams = [
+        p for paths in index_data.get("pstreams", {}).values() for p in paths
+    ]
 
     signals = Signals()
     osc_files = OscFiles()
@@ -464,6 +476,146 @@ def align(
     with open(export_path, "w", encoding="utf8") as fh:
         json.dump(tables, fh, default=float)
     typer.echo(f"Exported tables to {export_path}")
+
+
+@app.command("revise-align")
+def revise_align(
+    align_table: Path = typer.Option(
+        ...,
+        "--align-table",
+        dir_okay=False,
+        file_okay=True,
+        exists=True,
+        help="Input alignment JSON table.",
+    ),
+    remove_list: Path = typer.Option(
+        ...,
+        "--remove-list",
+        dir_okay=False,
+        file_okay=True,
+        exists=True,
+        help="JSON/TXT/CSV list of datapoints to remove.",
+    ),
+    output: Path = typer.Option(
+        ...,
+        "--output",
+        "-o",
+        dir_okay=False,
+        file_okay=True,
+        exists=False,
+        help="Output revised alignment JSON.",
+    ),
+    match_key: str = typer.Option(
+        "path",
+        "--match-key",
+        help=(
+            "How to match remove-list entries to alignment rows. "
+            "Options: path, path_basename, file_stamp, sid, sid_file_stamp, row_index."
+        ),
+    ),
+    invert: bool = typer.Option(
+        False,
+        "--invert",
+        help="Invert selection: keep only rows in remove-list instead of removing them.",
+    ),
+) -> None:
+    """Revise an alignment table by removing rows listed in a remove-list."""
+
+    from .core.alignment_edit import revise_alignment_by_remove_list
+
+    summary = revise_alignment_by_remove_list(
+        align_table=align_table,
+        remove_list=remove_list,
+        output=output,
+        match_key=match_key,
+        invert=invert,
+    )
+
+    typer.echo(json.dumps(summary, indent=2))
+
+
+@app.command("flag-low-peak")
+def flag_low_peak(
+    dataset_root: Path = typer.Option(
+        ...,
+        "--dataset-root",
+        dir_okay=True,
+        file_okay=False,
+        exists=True,
+        help="Dataset root used to resolve file paths inside align.json.",
+    ),
+    align_table: Path = typer.Option(
+        ...,
+        "--align-table",
+        dir_okay=False,
+        file_okay=True,
+        exists=True,
+        help="Input alignment JSON table.",
+    ),
+    output_list: Path = typer.Option(
+        ...,
+        "--output-list",
+        "-o",
+        dir_okay=False,
+        file_okay=True,
+        exists=False,
+        help="Output JSON remove-list.",
+    ),
+    channel: int = typer.Option(
+        0,
+        "--channel",
+        help="Waveform channel index to inspect.",
+    ),
+    baseline_samples: Optional[int] = typer.Option(
+        None,
+        "--baseline-samples",
+        help="Use first X samples as baseline window.",
+    ),
+    baseline_seconds: Optional[float] = typer.Option(
+        None,
+        "--baseline-seconds",
+        help="Use first X seconds as baseline window; requires valid timestamps.",
+    ),
+    threshold_multiplier: float = typer.Option(
+        1.0,
+        "--threshold-multiplier",
+        help=(
+            "Remove if max(abs(signal)) <= multiplier * mean(abs(baseline_window)). "
+            "Use 1.0 for literal requested rule; use 2-5 for stricter peak detection."
+        ),
+    ),
+    include_missing: bool = typer.Option(
+        True,
+        "--include-missing/--skip-missing",
+        help="Include missing files in the removal list.",
+    ),
+) -> None:
+    """Create a remove-list for files whose peak amplitude is not above baseline."""
+
+    if baseline_samples is None and baseline_seconds is None:
+        raise typer.BadParameter(
+            "Specify either --baseline-samples or --baseline-seconds"
+        )
+
+    if baseline_samples is not None and baseline_seconds is not None:
+        raise typer.BadParameter(
+            "Use only one of --baseline-samples or --baseline-seconds"
+        )
+
+    from .core.amplitude_filter import build_low_peak_remove_list
+
+    summary = build_low_peak_remove_list(
+        align_table=align_table,
+        dataset_root=dataset_root,
+        output_list=output_list,
+        channel=channel,
+        baseline_samples=baseline_samples,
+        baseline_seconds=baseline_seconds,
+        threshold_multiplier=threshold_multiplier,
+        include_missing=include_missing,
+    )
+
+    typer.echo(json.dumps(summary, indent=2))
 
 
 @app.command()

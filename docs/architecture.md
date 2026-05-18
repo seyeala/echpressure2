@@ -7,6 +7,7 @@ Alignment enforces a maximum allowable error ``O_max``. If the midpoint lies far
 ## Pipeline
 1. **Ingestion & Indexing** – Resolve dataset paths, parse file and record metadata, and build in-memory tables for fast lookup. See [Dataset Indexer](dataset_indexer.md) for session lookup rules and pattern matching.
 2. **Calibration & Mapping** – Convert voltages to calibrated pressure values and compute midpoint alignment, keeping track of error bounds.
+2.5. **Alignment Revision / Quality Filtering** – After file-level midpoint alignment, users may remove poor-quality rows using alignment metadata or waveform-derived metrics. The revised alignment table is then passed to `adapt --align-table`.
 3. **Adapters Layer 1** – Cycle-synchronous mappings such as PB-CSA, PLSTN, HMV, CEC, DTW-TA and MTP transform waveforms into fixed-length, shift-invariant representations.
 4. **Adapters Layer 2** – Transforms applied to mapped cycles including Fourier spectrum, Hilbert-envelope, wavelet energies and MFCC features.
 5. **Visualization** – Utilities to inspect raw, mapped and transformed data.
