@@ -5,6 +5,7 @@ from .derivative import central_difference, local_linear, savgol
 from .mapping import AlignmentResult, align_streams
 from .uncertainty import pressure_uncertainty, bound_pressure
 from .rmcpe import RMCPEConfig, run_rmcpe
+from .tciml import TCIMLConfig, run_tciml
 
 __all__ = [
     "CalibrationCoefficients",
@@ -18,4 +19,6 @@ __all__ = [
     "bound_pressure",
     "RMCPEConfig",
     "run_rmcpe",
+    "TCIMLConfig",
+    "run_tciml",
 ]
