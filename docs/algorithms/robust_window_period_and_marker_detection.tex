@@ -1,0 +1,88 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage[hidelinks]{hyperref}
+
+\title{Robust Window-Period and Marker Detection\\\large RMCPE + TCIML Specification}
+\author{Echpressure}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\section{Purpose}
+This document specifies a two-stage preprocessing pipeline for periodic waveforms:
+\begin{enumerate}
+  \item \textbf{RMCPE} (Robust Multi-file Comb Period Estimation) estimates a stable global period $\hat{T}$ across files.
+  \item \textbf{TCIML} (Template-Constrained Incident Marker Localization) finds per-file marker indices using $\hat{T}$ and a learned template.
+\end{enumerate}
+The goal is robust marker localization under noise, amplitude variation, and occasional outlier files.
+
+\section{Stage 1: RMCPE (Global Period Estimation)}
+Given files $i \in \{1,\dots,M\}$ with samples $x_i[n]$, search $T \in [T_{\min}, T_{\max}]$ on a grid.
+
+For each file and candidate period, score periodic agreement with a robust objective:
+\begin{equation}
+S_i(T) = \sum_{n} \rho\!\left(x_i[n]-x_i[n+T]\right),
+\end{equation}
+where $\rho(\cdot)$ is a robust loss (Huber-like in implementation) to reduce outlier influence.
+
+For each file, fit a local optimum $\hat{T}_i$ and confidence weight $w_i$ from residual scale and fit quality.
+Aggregate to a global estimate:
+\begin{equation}
+\hat{T} = \frac{\sum_i w_i\hat{T}_i}{\sum_i w_i}.
+\end{equation}
+
+Exported artifacts:
+\begin{itemize}
+  \item \texttt{window\_period\_summary.json} containing $\hat{T}$ and aggregate diagnostics.
+  \item \texttt{window\_period\_per\_file.csv} containing $\hat{T}_i$, scores, and weights.
+\end{itemize}
+
+\section{Stage 2: TCIML (Marker Localization)}
+Using $\hat{T}$, each file is normalized and aligned to expected cycle centers:
+\begin{equation}
+\mu_k = \phi + k\hat{T}, \quad k=0,1,\dots,K-1,
+\end{equation}
+where $\phi$ is an estimated phase offset.
+
+A template waveform is built from selected cycles (trimmed mean/median style robustness). Marker candidates are scored by local template match with timing regularization:
+\begin{equation}
+J(n_k) = \alpha\,\mathrm{match}(x[n_k],\tau) - \beta\,\left|n_k-\mu_k\right|,
+\end{equation}
+subject to spacing constraints near $\hat{T}$.
+
+The final marker set is the sequence maximizing total score under constraints (dynamic-programming style selection).
+
+Outputs:
+\begin{itemize}
+  \item marker index table per file,
+  \item optional diagnostic overlays (template and selected markers).
+\end{itemize}
+
+\section{Operational Notes}
+\begin{itemize}
+  \item Use manual period override when known from acquisition hardware.
+  \item Keep robust weighting enabled for mixed-quality batches.
+  \item Validate marker spacing histogram around $\hat{T}$ as a sanity check.
+\end{itemize}
+
+\section{Implementation Map}
+Reference implementation modules:
+\begin{itemize}
+  \item \texttt{src/echopress/core/rmcpe.py}
+  \item \texttt{src/echopress/core/tciml.py}
+  \item CLI integration: \texttt{src/echopress/cli.py}
+\end{itemize}
+
+\section{Regeneration}
+Build this PDF locally with:
+\begin{verbatim}
+make docs-algorithms
+\end{verbatim}
+
+\end{document}
