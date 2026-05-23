@@ -106,6 +106,94 @@ python -m echopress.cli adapt \
 
 Existing commands such as `ingest`, `calibrate` and `viz` remain available.
 
+### RMCPE/TCIML pre-processing for marker-aware adaptation
+
+The `adapt` command supports an optional two-stage preprocessing path enabled by
+`--use-rmcpe-tciml`:
+
+1. **Global period inference (RMCPE)** estimates one robust, cross-file window
+   period `T_hat` from candidate incident peaks in all selected O-stream files.
+2. **Local marker localization (TCIML)** then localizes per-file incident
+   markers constrained by that global period and template-matching scores.
+
+Conceptually, **RMCPE solves a dataset-level timing problem**, while **TCIML
+solves a file-level localization problem**.
+
+#### Configuration reference (major parameters)
+
+The table below summarizes the core controls currently used by
+`echopress.core.rmcpe.RMCPEConfig` and `echopress.core.tciml.TCIMLConfig`.
+
+| Parameter | Default | Typical / valid range | Purpose |
+| --- | --- | --- | --- |
+| `RMCPE.T_min` | required | `>0` samples | Lower bound for candidate period search. |
+| `RMCPE.T_max` | required | `>T_min` samples | Upper bound for candidate period search. |
+| `RMCPE.raw_max_abs_min` | `0.0` | `>=0` | Rejects weak files before peak extraction. |
+| `RMCPE.max_env_points` | `55000` | positive int | Envelope downsampling budget for block-max reduction. |
+| `RMCPE.prominence` | `0.0` | `>=0` | `find_peaks` prominence threshold on envelope. |
+| `RMCPE.distance` | `1` | int `>=1` | Minimum peak spacing in envelope points. |
+| `RMCPE.width` | `None` | `None` or `>0` | Optional `find_peaks` width constraint. |
+| `RMCPE.tau_T` | `1.0` | `>0` | Robust-loss transition/scaling control. |
+| `RMCPE.lambda_` | `1.0` | `>0` | Exponential weighting strength for comb residual score. |
+| `RMCPE.robust_loss` | `"huber"` | `huber` / `cauchy` / fallback L1 | Residual penalty family. |
+| `RMCPE.bootstrap_count` | `200` | int `>=1` | Bootstrap draws for period CI. |
+| `RMCPE.random_seed` | `0` | int | Reproducibility for bootstrap. |
+| `RMCPE.poor_comb_score_min` | `1e-6` | `[0,1]` | Rejects files with poor comb consistency. |
+| `TCIML.T_hat` | required | `>0` samples | Global period supplied to local marker search. |
+| `TCIML.T_error_samples` | required | `>=0` | Period uncertainty used to size search radius. |
+| `TCIML.peak_width_samples` | required | int `>=1` | Half-width of local marker/template window. |
+| `TCIML.search_radius_min` | `8` | int `>=1` | Minimum search radius around expected centers. |
+| `TCIML.alpha` | `0.75` | `[0,1]` | Blend weight between raw and envelope NCC scores. |
+| `TCIML.C_min` | `0.25` | usually `[0,1]` | Minimum blended NCC score for acceptance. |
+| `TCIML.P_min` | `0.0` | `>=0` | Minimum local prominence threshold. |
+| `TCIML.W_minus` / `TCIML.W_plus` | `8` / `8` | int `>=0` | Pre/post context around localized marker. |
+| `TCIML.envelope_rel_threshold` | `0.35` | `(0,1]` typical | Relative threshold for onset/end refinement. |
+| `TCIML.template_peak_prominence` | `0.0` | `>=0` | Candidate-template peak screening. |
+
+#### Output artifacts
+
+When RMCPE/TCIML preprocessing is enabled, these artifacts are written in the
+working directory:
+
+* `window_period_summary.json` — global RMCPE result (`T_hat`, error estimate,
+  bootstrap CI, acceptance counts, full config).
+* `window_period_per_file.csv` — per-file RMCPE fit details (`T_i`, phase,
+  robust score, rejection reason, peak counts).
+* `incident_marker_table.csv` — TCIML marker-level table (expected vs matched
+  centers, NCC scores, residuals, acceptance/reject reasons, window indices).
+* Template `.npy` files:
+  * `incident_template.npy` (raw template)
+  * `incident_template_env.npy` (envelope template, when available)
+
+#### Integration with cleanup and FTS
+
+Accepted TCIML markers are used to crop each O-stream into incident windows
+(`window_start_idx` → `window_end_idx`) before adapter extraction. The cropped
+segments are concatenated and passed into the selected adapter pipeline,
+including FTS. In practice, this acts as a **cleanup stage** that suppresses
+non-incident regions and feeds cleaner, marker-aligned signal content to
+frequency-domain transforms.
+
+#### Troubleshooting
+
+* **Insufficient incident candidates** (`insufficient_peaks` or template-build
+  failures): lower `RMCPE.prominence`, reduce `RMCPE.distance`, widen
+  `RMCPE.T_min/T_max`, or reduce `TCIML.template_peak_prominence`.
+* **Harmonic ambiguity (`T` vs `2T`)**: tighten `RMCPE.T_min/T_max` around the
+  expected physical period and verify accepted per-file `T_i` values in
+  `window_period_per_file.csv`.
+* **Poor comb match fraction** (`poor_comb_score`): relax
+  `RMCPE.poor_comb_score_min` or increase signal quality before fitting.
+* **Low NCC markers** (`score_low`): lower `TCIML.C_min`, retune
+  `TCIML.alpha`, or increase template quality by filtering weak files.
+
+#### Diagnostic note on largest-peak alignment
+
+Largest-peak matching is useful as a diagnostic sanity check, but it is **not
+the segmentation primitive** in this path. Segmentation windows are determined
+by TCIML expected-center constraints plus NCC-based localization, not by a
+single absolute largest-peak anchor.
+
 ### P-stream CSVs
 
 Files like `voltprsr001.csv` and `ai_log001.csv` hold `timestamp,pressure`
