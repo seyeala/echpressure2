@@ -7,6 +7,7 @@ from typing import Dict, List, Optional
 
 import json
 import logging
+import os
 import random
 
 import numpy as np
@@ -17,7 +18,9 @@ from pydantic import ValidationError
 from .adapters import get_adapter
 from .core.calibration import apply_calibration
 from .core.mapping import align_streams
+from .core.rmcpe import RMCPEConfig, run_rmcpe
 from .core.tables import File2PressureMap, OscFiles, Signals, export_tables
+from .core.tciml import TCIMLConfig, run_tciml
 from .config import Settings, load_settings
 from .ingest import DatasetIndexer, load_ostream, read_pstream
 from ._typer import bad_parameter
@@ -669,6 +672,16 @@ def adapt(
         exists=False,
         help="Path to the alignment table. Defaults to <dataset root>/align.json.",
     ),
+    use_rmcpe_tciml: bool = typer.Option(
+        False,
+        "--use-rmcpe-tciml/--no-use-rmcpe-tciml",
+        help="Enable RMCPE->TCIML pre-processing before adapter extraction.",
+    ),
+    window_period_samples: Optional[float] = typer.Option(
+        None,
+        "--window-period-samples",
+        help="Manual period override in samples. Alias: ENVELOPE_PERIOD_SAMPLES.",
+    ),
 ) -> Optional[List[np.ndarray]]:
     """Apply adapters to files sampled from the dataset.
 
@@ -702,6 +715,12 @@ def adapt(
     adapter_obj = get_adapter(adapter_name)
     fs = settings.adapter.period_est.fs
     f0 = settings.adapter.period_est.f0
+    if window_period_samples is None:
+        raw = os.environ.get("WINDOW_PERIOD_SAMPLES") or os.environ.get(
+            "ENVELOPE_PERIOD_SAMPLES"
+        )
+        if raw:
+            window_period_samples = float(raw)
 
     root_path = Path(dataset_root) if dataset_root else _dataset_root(settings)
 
@@ -740,6 +759,32 @@ def adapt(
     outputs: List[np.ndarray] = []
     skipped = 0
     cycle_len = fs / f0 if f0 else None
+    tciml_by_file: dict[str, list[dict[str, int]]] = {}
+    if use_rmcpe_tciml:
+        raw_arrays: list[np.ndarray] = []
+        raw_names: list[str] = []
+        for path_str, _ in items:
+            o_path = Path(path_str)
+            arr = np.asarray(load_ostream(o_path).channels)
+            arr = arr[:, 0] if arr.ndim == 2 and arr.shape[1] > 0 else np.ravel(arr)
+            raw_arrays.append(np.ravel(arr))
+            raw_names.append(str(o_path))
+        if raw_arrays:
+            r_cfg = RMCPEConfig(T_min=2.0, T_max=max(3.0, float(max(map(len, raw_arrays)))))
+            r_summary, r_df = run_rmcpe(raw_arrays, r_cfg)
+            t_hat = float(window_period_samples) if window_period_samples else float(r_summary["T_hat"])
+            if np.isfinite(t_hat) and t_hat > 0:
+                tc_cfg = TCIMLConfig(
+                    T_hat=t_hat,
+                    T_error_samples=max(1.0, float(r_summary.get("T_error_samples", 1.0))),
+                    peak_width_samples=max(1, int(round(0.05 * t_hat))),
+                )
+                marker_df = run_tciml(raw_arrays, r_summary, r_df, tc_cfg)
+                marker_df["file_id"] = marker_df["file_id"].map(lambda x: raw_names[int(str(x).split("_")[-1])] if str(x).startswith("file_") else str(x))
+                for rec in marker_df[marker_df["accepted"]].to_dict("records"):
+                    tciml_by_file.setdefault(str(rec["file_id"]), []).append(rec)
+                cycle_len = t_hat
+                f0 = fs / t_hat if fs and t_hat else f0
     for path_str, pressure_value in items:
         o_path = Path(path_str)
         ostream = load_ostream(o_path)
@@ -755,6 +800,16 @@ def adapt(
             )
             skipped += 1
             continue
+        file_markers = tciml_by_file.get(str(o_path), [])
+        if file_markers:
+            segs: list[np.ndarray] = []
+            for marker in file_markers:
+                lo = max(0, int(marker["window_start_idx"]))
+                hi = min(data.size, int(marker["window_end_idx"]) + 1)
+                if hi > lo:
+                    segs.append(data[lo:hi])
+            if segs:
+                data = np.concatenate(segs)
         if cycle_len is not None and data.size < cycle_len:
             typer.secho(
                 (

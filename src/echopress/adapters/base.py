@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable, Dict, List, Callable
+import os
 import numpy as np
 
 
@@ -90,7 +91,8 @@ def cycle_synchronous_map(signal: np.ndarray, fs: float, f0: float) -> np.ndarra
     """
     if signal.ndim != 1:
         raise ValueError("signal must be one-dimensional")
-    cycle_len = int(fs / f0)
+    target_cycle_len = os.environ.get("TARGET_CYCLE_LEN")
+    cycle_len = int(float(target_cycle_len)) if target_cycle_len else int(fs / f0)
     if cycle_len <= 0:
         raise ValueError("cycle length must be positive")
     n_cycles = signal.size // cycle_len
