@@ -4,6 +4,7 @@ from .calibration import CalibrationCoefficients, apply_calibration
 from .derivative import central_difference, local_linear, savgol
 from .mapping import AlignmentResult, align_streams
 from .uncertainty import pressure_uncertainty, bound_pressure
+from .rmcpe import RMCPEConfig, run_rmcpe
 
 __all__ = [
     "CalibrationCoefficients",
@@ -15,4 +16,6 @@ __all__ = [
     "savgol",
     "pressure_uncertainty",
     "bound_pressure",
+    "RMCPEConfig",
+    "run_rmcpe",
 ]
