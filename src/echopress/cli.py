@@ -685,6 +685,8 @@ def detect_macro_windows(
     signature_right: int = typer.Option(12000, "--signature-right"),
     signature_chunk_size: int = typer.Option(4096, "--signature-chunk-size"),
     plot_diagnostics: bool = typer.Option(True, "--plot-diagnostics/--no-plot-diagnostics"),
+    progress_every: int = typer.Option(25, "--progress-every"),
+    quiet: bool = typer.Option(False, "--quiet/--no-quiet"),
 ) -> None:
     cfg = MacroDetectorConfig(
         dataset_root=dataset_root,
@@ -710,6 +712,8 @@ def detect_macro_windows(
         signature_right=signature_right,
         signature_chunk_size=signature_chunk_size,
         plot_diagnostics=plot_diagnostics,
+        progress_every=progress_every,
+        quiet=quiet,
     )
     summary = run_macro_detection(cfg)
     typer.echo(json.dumps(summary, indent=2, default=float))

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 import json
 from pathlib import Path
+import time
 from typing import Optional
 
 import numpy as np
@@ -51,7 +52,24 @@ class MacroDetectorConfig:
     signature_chunk_size: int = 4096
     write_signatures: bool = False
     plot_diagnostics: bool = True
+    progress_every: int = 25
+    quiet: bool = False
 
+
+
+
+def _eta_line(stage: str, i: int, total: int, start_time: float) -> str:
+    elapsed = time.time() - start_time
+    rate = i / elapsed if elapsed > 0 else 0.0
+    remaining = total - i
+    eta = remaining / rate if rate > 0 else float("nan")
+
+    return (
+        f"[{stage}] {i}/{total} files | "
+        f"elapsed={elapsed/60:.1f} min | "
+        f"rate={rate:.2f} files/s | "
+        f"ETA={eta/60:.1f} min"
+    )
 
 def _robust_z(x: np.ndarray) -> np.ndarray:
     med = float(np.median(x))
@@ -133,7 +151,16 @@ def run_macro_detection(cfg: MacroDetectorConfig) -> dict:
 
     k_rows = []
     cache = []
+    t0 = time.time()
+    total = len(align)
     for i, row in align.reset_index(drop=True).iterrows():
+        file_no = i + 1
+        if not cfg.quiet and (
+            file_no == 1
+            or file_no % cfg.progress_every == 0
+            or file_no == total
+        ):
+            print(_eta_line("macro-K pass", file_no, total, t0), flush=True)
         sig = np.asarray(load_ostream(Path(row.path)).channels)
         sig = sig[:, cfg.channel] if sig.ndim == 2 else sig.reshape(-1)
         if sig.size == 0 or np.max(np.abs(sig)) < cfg.raw_max_abs_min:
@@ -143,7 +170,16 @@ def run_macro_detection(cfg: MacroDetectorConfig) -> dict:
         kdf = score_file_k(env, len(sig), cfg)
         kdf["path"] = row.path
         k_rows.append(kdf)
-        cache.append((i, row, sig, env, centers, trans))
+        cache.append({
+            "file_index": i,
+            "path": row.path,
+            "file": row.file,
+            "pressure_value": row.pressure_value,
+            "n_samples": len(sig),
+            "env": env,
+            "centers": centers,
+            "trans": trans,
+        })
 
     all_k = pd.concat(k_rows, ignore_index=True)
     all_k.to_csv(out / "k_scores.csv", index=False)
@@ -152,7 +188,19 @@ def run_macro_detection(cfg: MacroDetectorConfig) -> dict:
 
     windows_all = []
     peaks_all = []
-    for file_index, row, sig, env, centers, trans in cache:
+    t1 = time.time()
+    total2 = len(cache)
+    for n, item in enumerate(cache, start=1):
+        if not cfg.quiet and (
+            n == 1
+            or n % cfg.progress_every == 0
+            or n == total2
+        ):
+            print(_eta_line("window/peak pass", n, total2, t1), flush=True)
+        sig = np.asarray(load_ostream(Path(item["path"])).channels)
+        sig = sig[:, cfg.channel] if sig.ndim == 2 else sig.reshape(-1)
+        env = item["env"]
+        trans = item["trans"]
         step_bins = len(env) / float(global_k)
         fit = fit_macro_k_phase(env, MacroConfig(k_candidates=(step_bins,), phase_step=max(1, int(step_bins // 100)), pre_span=cfg.pre_span, post_span=cfg.post_span))
         phase_samples = fit.phase * cfg.block_size
@@ -165,7 +213,7 @@ def run_macro_detection(cfg: MacroDetectorConfig) -> dict:
             b = lo + int(np.argmax(trans[lo:hi]))
             onset = int(min(len(sig) - 1, b * cfg.block_size))
             end = int(min(len(sig), onset + T_guess))
-            windows_all.append({"path": row.path, "file": row.file, "file_index": file_index, "pressure_value": row.pressure_value, "macro_window_index": j, "macro_onset_idx": onset, "macro_window_start_idx": onset, "macro_window_end_idx_exclusive": end, "macro_transition_score": float(trans[b]), "n_samples": len(sig)})
+            windows_all.append({"path": item["path"], "file": item["file"], "file_index": item["file_index"], "pressure_value": item["pressure_value"], "macro_window_index": j, "macro_onset_idx": onset, "macro_window_start_idx": onset, "macro_window_end_idx_exclusive": end, "macro_transition_score": float(trans[b]), "n_samples": len(sig)})
 
     windows_df = pd.DataFrame(windows_all)
     windows_df.to_csv(out / "macro_window_table.csv", index=False)
@@ -251,7 +299,15 @@ def run_macro_detection(cfg: MacroDetectorConfig) -> dict:
         sig_rows = reg_df[reg_df.get("used_for_backward_common_window", False)].copy()
         blobs = []
         meta = []
+        total_sig = len(sig_rows)
+        t2 = time.time()
         for i, r in sig_rows.reset_index(drop=True).iterrows():
+            if not cfg.quiet and (
+                i + 1 == 1
+                or (i + 1) % cfg.progress_every == 0
+                or i + 1 == total_sig
+            ):
+                print(_eta_line("signature pass", i + 1, total_sig, t2), flush=True)
             sig = np.asarray(load_ostream(Path(r.path)).channels)
             sig = sig[:, cfg.channel] if sig.ndim == 2 else sig.reshape(-1)
             blobs.append(extract_peak_centered(sig, int(r.first_peak_idx), left=cfg.signature_left, right=cfg.signature_right))
