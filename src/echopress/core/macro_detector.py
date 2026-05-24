@@ -32,6 +32,8 @@ class MacroDetectorConfig:
     k_min: int = 1
     k_max: int = 20
     force_k: Optional[int] = None
+    max_files: Optional[int] = None
+    npz_only: bool = True
     block_size: int = 10_000
     envelope_window: int = 9
     pre_span: int = 4
@@ -80,19 +82,44 @@ def _robust_z(x: np.ndarray) -> np.ndarray:
 
 def load_alignment_rows(cfg: MacroDetectorConfig) -> pd.DataFrame:
     rows = pd.read_json(cfg.align_table)
+
     if "path" not in rows.columns:
-        raise ValueError("align table missing 'path'")
-    rows = rows.dropna(subset=["path", "pressure_value"])
+        raise ValueError(f"align table missing 'path'; columns={list(rows.columns)}")
+    if "pressure_value" not in rows.columns:
+        raise ValueError(f"align table missing 'pressure_value'; columns={list(rows.columns)}")
+
+    rows = rows.dropna(subset=["path", "pressure_value"]).copy()
+
     if cfg.max_alignment_error_s is not None and "alignment_error" in rows.columns:
+        rows["alignment_error"] = pd.to_numeric(rows["alignment_error"], errors="coerce")
+        rows = rows[rows["alignment_error"].notna()]
         rows = rows[rows["alignment_error"] <= cfg.max_alignment_error_s]
+
     if cfg.pr_min is not None:
         rows = rows[rows["pressure_value"] >= cfg.pr_min]
     if cfg.pr_max is not None:
         rows = rows[rows["pressure_value"] <= cfg.pr_max]
-    rows["path"] = rows["path"].map(lambda p: str((cfg.dataset_root / p).resolve()) if not Path(p).is_absolute() else str(Path(p).resolve()))
+
+    def resolve_path(p: object) -> str:
+        pp = Path(str(p))
+        if pp.is_absolute():
+            return str(pp.resolve())
+        return str((cfg.dataset_root / pp.name).resolve())
+
+    rows["path"] = rows["path"].map(resolve_path)
+
+    if cfg.npz_only:
+        rows = rows[rows["path"].astype(str).str.lower().str.endswith(".npz")]
+
     rows = rows[rows["path"].map(lambda p: Path(p).exists())]
     rows = rows.drop_duplicates(subset=["path"]).reset_index(drop=True)
     rows["file"] = rows["path"].map(lambda p: Path(p).name)
+
+    if cfg.max_files is not None and cfg.max_files > 0 and len(rows) > cfg.max_files:
+        rows = rows.sort_values("pressure_value").reset_index(drop=True)
+        pick = np.linspace(0, len(rows) - 1, cfg.max_files).round().astype(int)
+        rows = rows.iloc[pick].drop_duplicates(subset=["path"]).reset_index(drop=True)
+
     return rows
 
 
@@ -149,6 +176,24 @@ def run_macro_detection(cfg: MacroDetectorConfig) -> dict:
     align = load_alignment_rows(cfg)
     align.to_csv(out / "alignment_filtered.csv", index=False)
 
+    if not cfg.quiet:
+        ae = align["alignment_error"] if "alignment_error" in align.columns else None
+        print(
+            f"[detect-macro-windows] loaded {len(align)} files | "
+            f"k={cfg.force_k if cfg.force_k is not None else f'{cfg.k_min}-{cfg.k_max}'} | "
+            f"max_files={cfg.max_files} | "
+            f"write_signatures={cfg.write_signatures}",
+            flush=True,
+        )
+        if ae is not None and len(ae):
+            print(
+                f"[detect-macro-windows] alignment_error "
+                f"min/median/max={float(ae.min()):.6g}/"
+                f"{float(ae.median()):.6g}/"
+                f"{float(ae.max()):.6g}",
+                flush=True,
+            )
+
     k_rows = []
     cache = []
     t0 = time.time()
@@ -180,6 +225,12 @@ def run_macro_detection(cfg: MacroDetectorConfig) -> dict:
             "centers": centers,
             "trans": trans,
         })
+
+    if not k_rows:
+        raise RuntimeError(
+            "No usable files after alignment filtering and raw_max_abs_min filtering. "
+            "Check align table, channel, npz_only, and raw_max_abs_min."
+        )
 
     all_k = pd.concat(k_rows, ignore_index=True)
     all_k.to_csv(out / "k_scores.csv", index=False)
