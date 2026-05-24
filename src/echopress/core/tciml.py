@@ -29,6 +29,7 @@ class TCIMLConfig:
     W_plus: int = 8
     envelope_rel_threshold: float = 0.35
     template_peak_prominence: float = 0.0
+    use_supplied_phase: bool = True
 
 
 def _extract_signal(file_obj: Any, adapters: Any) -> np.ndarray:
@@ -90,10 +91,16 @@ def _ncc(signal: np.ndarray, template: np.ndarray) -> np.ndarray:
     if signal.size < w:
         return np.asarray([], dtype=float)
     conv = correlate(signal, t[::-1], mode="valid")
+    csum = np.concatenate(([0.0], np.cumsum(signal, dtype=float)))
+    csum_sq = np.concatenate(([0.0], np.cumsum(np.square(signal, dtype=float), dtype=float)))
+    seg_sum = csum[w:] - csum[:-w]
+    seg_sq_sum = csum_sq[w:] - csum_sq[:-w]
+    seg_mean = seg_sum / w
+    seg_var = np.maximum(seg_sq_sum / w - np.square(seg_mean), 0.0)
+    seg_norm = np.sqrt(seg_var * w)
     out = np.zeros_like(conv, dtype=float)
-    for i in range(conv.size):
-        seg = _norm(signal[i : i + w])
-        out[i] = float(np.dot(seg, t))
+    valid = seg_norm > 1e-12
+    out[valid] = conv[valid] / seg_norm[valid]
     return out
 
 
@@ -131,12 +138,18 @@ def run_tciml(
     per_file_period_df: pd.DataFrame,
     config: TCIMLConfig,
     adapters: Any = None,
+    output_dir: Path | None = None,
+    write_artifacts: bool = True,
 ) -> pd.DataFrame:
-    del period_summary, per_file_period_df
-
+    output_dir = Path(output_dir) if output_dir is not None else Path(".")
+    output_dir.mkdir(parents=True, exist_ok=True)
     rows: list[dict[str, Any]] = []
     file_signals: list[np.ndarray] = []
     file_ids: list[str] = []
+    per_file_period_lookup: dict[str, dict[str, Any]] = {}
+
+    if not per_file_period_df.empty and "file_id" in per_file_period_df.columns:
+        per_file_period_lookup = per_file_period_df.set_index("file_id").to_dict(orient="index")
 
     for i, f in enumerate(files):
         file_id = str(getattr(f, "name", f"file_{i}"))
@@ -145,16 +158,33 @@ def run_tciml(
         file_signals.append(sig)
 
     raw_template, env_template = _build_template(file_signals, config)
-    np.save("incident_template.npy", raw_template)
-    if env_template is not None:
-        np.save("incident_template_env.npy", env_template)
+    if write_artifacts:
+        np.save(output_dir / "incident_template.npy", raw_template)
+        if env_template is not None:
+            np.save(output_dir / "incident_template_env.npy", env_template)
 
     w = config.peak_width_samples
     for file_id, sig in zip(file_ids, file_signals):
         N = sig.size
-        cand_peaks, _ = find_peaks(np.abs(sig), distance=max(1, int(0.5 * config.T_hat)))
-        phase = _estimate_phase(cand_peaks.astype(float), config.T_hat)
-        expected = _expected_centers(N, phase, config)
+        file_period = per_file_period_lookup.get(file_id, {})
+        supplied_period = file_period.get("T_i")
+        supplied_phase = file_period.get("phase_i")
+        use_supplied_phase = (
+            config.use_supplied_phase
+            and supplied_phase is not None
+            and not pd.isna(supplied_phase)
+            and supplied_period is not None
+            and not pd.isna(supplied_period)
+        )
+        T_i = float(supplied_period) if use_supplied_phase else float(period_summary.get("T_hat", config.T_hat))
+        if use_supplied_phase:
+            phase = float(supplied_phase)
+        else:
+            cand_peaks, _ = find_peaks(np.abs(sig), distance=max(1, int(0.5 * T_i)))
+            phase = _estimate_phase(cand_peaks.astype(float), T_i)
+
+        local_cfg = TCIMLConfig(**{**asdict(config), "T_hat": T_i})
+        expected = _expected_centers(N, phase, local_cfg)
         env = _extract_envelope(file_id, adapters, sig)
 
         for mu in expected:
@@ -230,7 +260,8 @@ def run_tciml(
             )
 
     marker_df = pd.DataFrame(rows)
-    marker_df.to_csv("incident_marker_table.csv", index=False)
+    if write_artifacts:
+        marker_df.to_csv(output_dir / "incident_marker_table.csv", index=False)
 
     meta = {
         "algorithm": "tciml",
@@ -239,5 +270,6 @@ def run_tciml(
         "n_markers": int(marker_df.shape[0]),
         "n_accepted": int(marker_df["accepted"].sum()) if not marker_df.empty else 0,
     }
-    Path("incident_marker_summary.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    if write_artifacts:
+        (output_dir / "incident_marker_summary.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
     return marker_df
