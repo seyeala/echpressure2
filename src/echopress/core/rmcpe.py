@@ -150,12 +150,21 @@ def _fit_file(file_id: str, signal: np.ndarray, cfg: RMCPEConfig) -> FileFitResu
     )
 
 
-def run_rmcpe(files: Sequence[Any], config: RMCPEConfig, adapters: Any = None) -> tuple[dict[str, Any], pd.DataFrame]:
+def run_rmcpe(
+    files: Sequence[Any],
+    config: RMCPEConfig,
+    adapters: Any = None,
+    output_dir: Path | None = None,
+    write_artifacts: bool = True,
+) -> tuple[dict[str, Any], pd.DataFrame]:
+    target_dir = output_dir or Path.cwd()
     results: list[FileFitResult] = []
+    signal_lens: dict[str, int] = {}
     for i, f in enumerate(files):
         file_id = str(getattr(f, "name", f"file_{i}"))
         try:
             signal = _extract_signal(f, adapters)
+            signal_lens[file_id] = int(signal.size)
             res = _fit_file(file_id, signal, config)
         except Exception as exc:  # pragma: no cover
             LOGGER.exception("rmcpe failed for %s", file_id)
@@ -200,6 +209,26 @@ def run_rmcpe(files: Sequence[Any], config: RMCPEConfig, adapters: Any = None) -
         "T_bootstrap_ci": [ci_low, ci_high],
     }
 
-    Path("window_period_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
-    df.to_csv("window_period_per_file.csv", index=False)
+    if not accepted.empty:
+        median_n_peaks = float(np.median(accepted["n_peaks"].to_numpy(dtype=float)))
+        implied_counts: list[float] = []
+        for row in accepted.itertuples(index=False):
+            file_len = signal_lens.get(row.file_id)
+            if file_len is None or row.T_i is None or row.T_i <= 0:
+                continue
+            implied_counts.append(float(file_len / row.T_i))
+        if implied_counts:
+            implied_median = float(np.median(np.asarray(implied_counts, dtype=float)))
+            if implied_median >= 300 or (median_n_peaks >= 500 and implied_median >= 200):
+                LOGGER.warning(
+                    "rmcpe detected very high implied window counts (median≈%.1f, median accepted n_peaks≈%.1f); "
+                    "this may indicate micro-period lock. Consider a macro-window detector.",
+                    implied_median,
+                    median_n_peaks,
+                )
+
+    if write_artifacts:
+        target_dir.mkdir(parents=True, exist_ok=True)
+        (target_dir / "window_period_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+        df.to_csv(target_dir / "window_period_per_file.csv", index=False)
     return summary, df
