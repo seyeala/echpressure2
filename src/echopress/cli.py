@@ -20,6 +20,7 @@ from .adapters import get_adapter
 from .core.calibration import apply_calibration
 from .core.mapping import align_streams
 from .core.macro_detector import MacroDetectorConfig, run_macro_detection
+from .core.echo_peaks import EchoPeakConfig, run_echo_peak_detection
 from .core.rmcpe import RMCPEConfig, run_rmcpe
 from .core.tables import File2PressureMap, OscFiles, Signals, export_tables
 from .core.tciml import TCIMLConfig, run_tciml
@@ -720,6 +721,40 @@ def detect_macro_windows(
         quiet=quiet,
     )
     summary = run_macro_detection(cfg)
+    typer.echo(json.dumps(summary, indent=2, default=float))
+
+
+@app.command("detect-echo-peaks")
+def detect_echo_peaks(
+    detection_dir: Path = typer.Option(..., "--detection-dir", dir_okay=True, file_okay=False, exists=True),
+    output_dir: Optional[Path] = typer.Option(None, "--output-dir", dir_okay=True, file_okay=False),
+    config: Optional[Path] = typer.Option(None, "--config", dir_okay=False, file_okay=True),
+    channel: Optional[int] = typer.Option(None, "--channel"),
+    use_registered: Optional[bool] = typer.Option(None, "--use-registered/--all-first-peaks"),
+    zero_before_us: Optional[float] = typer.Option(None, "--zero-before-us"),
+    zero_after_us: Optional[float] = typer.Option(None, "--zero-after-us"),
+    zero_before_samples: Optional[int] = typer.Option(None, "--zero-before-samples"),
+    zero_after_samples: Optional[int] = typer.Option(None, "--zero-after-samples"),
+    hilbert_frac: Optional[float] = typer.Option(None, "--hilbert-frac"),
+    min_prominence_rel: Optional[float] = typer.Option(None, "--min-prominence-rel"),
+    min_height_rel: Optional[float] = typer.Option(None, "--min-height-rel"),
+    min_distance_samples: Optional[int] = typer.Option(None, "--min-distance-samples"),
+    refine_radius_samples: Optional[int] = typer.Option(None, "--refine-radius-samples"),
+    max_peaks_per_window: Optional[int] = typer.Option(None, "--max-peaks-per-window"),
+    save_cleaned_windows: Optional[bool] = typer.Option(None, "--save-cleaned-windows/--no-save-cleaned-windows"),
+    progress_every: Optional[int] = typer.Option(None, "--progress-every"),
+    quiet: Optional[bool] = typer.Option(None, "--quiet/--no-quiet"),
+) -> None:
+    """Detect secondary non-first echo peaks from stored macro-window first peaks using Hilbert/HTE."""
+    cfg = EchoPeakConfig(
+        detection_dir=detection_dir, output_dir=output_dir, config=config, channel=channel, use_registered=use_registered,
+        zero_before_us=zero_before_us, zero_after_us=zero_after_us, zero_before_samples=zero_before_samples,
+        zero_after_samples=zero_after_samples, hilbert_frac=hilbert_frac, min_prominence_rel=min_prominence_rel,
+        min_height_rel=min_height_rel, min_distance_samples=min_distance_samples, refine_radius_samples=refine_radius_samples,
+        max_peaks_per_window=max_peaks_per_window, save_cleaned_windows=save_cleaned_windows, progress_every=progress_every,
+        quiet=quiet,
+    )
+    summary = run_echo_peak_detection(cfg)
     typer.echo(json.dumps(summary, indent=2, default=float))
 
 
