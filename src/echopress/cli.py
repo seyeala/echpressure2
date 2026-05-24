@@ -11,6 +11,7 @@ import os
 import random
 
 import numpy as np
+import click
 import typer
 from click.core import ParameterSource
 from pydantic import ValidationError
@@ -714,7 +715,7 @@ def adapt(
         "--segmentation",
         help="Segmentation mode: none | rmcpe-tciml | macro-windows.",
         case_sensitive=False,
-        click_type=typer.Choice(SEGMENTATION_MODES, case_sensitive=False),
+        click_type=click.Choice(SEGMENTATION_MODES, case_sensitive=False),
     ),
     use_rmcpe_tciml: Optional[bool] = typer.Option(
         None,
