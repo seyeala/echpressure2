@@ -19,6 +19,7 @@ from pydantic import ValidationError
 from .adapters import get_adapter
 from .core.calibration import apply_calibration
 from .core.mapping import align_streams
+from .core.macro_detector import MacroDetectorConfig, run_macro_detection
 from .core.rmcpe import RMCPEConfig, run_rmcpe
 from .core.tables import File2PressureMap, OscFiles, Signals, export_tables
 from .core.tciml import TCIMLConfig, run_tciml
@@ -637,7 +638,7 @@ def detect_windows(
     signature_chunk_overlap: int = typer.Option(256, "--signature-chunk-overlap", help="Chunk overlap for signature extraction."),
     diagnostics_out: Optional[Path] = typer.Option(None, "--diagnostics-out", help="Write diagnostics JSON to this path."),
 ) -> None:
-    """Detect macro windows and emit diagnostics for period/marker extraction controls."""
+    """Legacy diagnostics-only window config dump. Use detect-macro-windows for actual detection."""
 
     diagnostics = {
         "macro_k_bounds": [macro_k_min, macro_k_max],
@@ -657,6 +658,61 @@ def detect_windows(
         diagnostics_out.parent.mkdir(parents=True, exist_ok=True)
         diagnostics_out.write_text(json.dumps(diagnostics, indent=2), encoding="utf-8")
     typer.echo(json.dumps(diagnostics, indent=2))
+
+
+@app.command("detect-macro-windows")
+def detect_macro_windows(
+    dataset_root: Path = typer.Option(..., "--dataset-root", dir_okay=True, file_okay=False, exists=True),
+    align_table: Path = typer.Option(..., "--align-table", dir_okay=False, file_okay=True, exists=True),
+    output_dir: Path = typer.Option(..., "--output-dir", dir_okay=True, file_okay=False),
+    channel: int = typer.Option(0, "--channel"),
+    k_min: int = typer.Option(1, "--k-min"),
+    k_max: int = typer.Option(20, "--k-max"),
+    force_k: Optional[int] = typer.Option(None, "--force-k"),
+    block_size: int = typer.Option(10000, "--block-size"),
+    envelope_window: int = typer.Option(9, "--envelope-window"),
+    pre_span: int = typer.Option(4, "--pre-span"),
+    post_span: int = typer.Option(10, "--post-span"),
+    raw_max_abs_min: float = typer.Option(100.0, "--raw-max-abs-min"),
+    max_alignment_error_s: Optional[float] = typer.Option(1.0, "--max-alignment-error-s"),
+    pr_min: Optional[float] = typer.Option(None, "--pr-min"),
+    pr_max: Optional[float] = typer.Option(None, "--pr-max"),
+    first_peak_search_frac: float = typer.Option(0.40, "--first-peak-search-frac"),
+    backward_full_windows: bool = typer.Option(True, "--backward-full-windows/--no-backward-full-windows"),
+    snap_tol_frac: float = typer.Option(0.12, "--snap-tol-frac"),
+    write_signatures: bool = typer.Option(False, "--write-signatures/--no-write-signatures"),
+    signature_left: int = typer.Option(1000, "--signature-left"),
+    signature_right: int = typer.Option(12000, "--signature-right"),
+    signature_chunk_size: int = typer.Option(4096, "--signature-chunk-size"),
+    plot_diagnostics: bool = typer.Option(True, "--plot-diagnostics/--no-plot-diagnostics"),
+) -> None:
+    cfg = MacroDetectorConfig(
+        dataset_root=dataset_root,
+        align_table=align_table,
+        output_dir=output_dir,
+        channel=channel,
+        k_min=k_min,
+        k_max=k_max,
+        force_k=force_k,
+        block_size=block_size,
+        envelope_window=envelope_window,
+        pre_span=pre_span,
+        post_span=post_span,
+        raw_max_abs_min=raw_max_abs_min,
+        max_alignment_error_s=max_alignment_error_s,
+        pr_min=pr_min,
+        pr_max=pr_max,
+        first_peak_search_frac=first_peak_search_frac,
+        backward_full_windows=backward_full_windows,
+        snap_tol_frac=snap_tol_frac,
+        write_signatures=write_signatures,
+        signature_left=signature_left,
+        signature_right=signature_right,
+        signature_chunk_size=signature_chunk_size,
+        plot_diagnostics=plot_diagnostics,
+    )
+    summary = run_macro_detection(cfg)
+    typer.echo(json.dumps(summary, indent=2, default=float))
 
 
 @app.command()
