@@ -1,0 +1,18 @@
+channel: 0
+use_registered: true
+
+zero_before_us: 0.0
+zero_after_us: 2.0
+zero_before_samples: 0
+zero_after_samples: 2000
+
+hilbert_frac: 0.20
+min_prominence_rel: 0.08
+min_height_rel: 0.05
+min_distance_samples: 200
+refine_radius_samples: 80
+max_peaks_per_window: 8
+
+save_cleaned_windows: false
+progress_every: 25
+quiet: false
