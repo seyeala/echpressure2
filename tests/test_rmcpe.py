@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import numpy as np
 
@@ -6,6 +7,7 @@ from echopress.core.rmcpe import (
     RMCPEConfig,
     _block_max_envelope,
     _fit_file,
+    run_rmcpe,
 )
 
 
@@ -70,3 +72,36 @@ def test_comb_score_prefers_true_period_over_2x_alias():
     assert true_res.accepted
     assert alias_res.accepted
     assert true_res.score > alias_res.score
+
+
+def test_run_rmcpe_no_artifact_writes_when_disabled(tmp_path):
+    files = [_impulse_train(400, 32, phase=5, amplitude=6.0, seed=4, noise=0.02)]
+    cfg = RMCPEConfig(T_min=20.0, T_max=50.0, prominence=0.1, bootstrap_count=20)
+    run_rmcpe(files, cfg, output_dir=tmp_path, write_artifacts=False)
+
+    assert not (tmp_path / "window_period_summary.json").exists()
+    assert not (tmp_path / "window_period_per_file.csv").exists()
+
+
+def test_run_rmcpe_writes_artifacts_to_output_dir(tmp_path):
+    files = [_impulse_train(400, 32, phase=5, amplitude=6.0, seed=4, noise=0.02)]
+    cfg = RMCPEConfig(T_min=20.0, T_max=50.0, prominence=0.1, bootstrap_count=20)
+    out_dir = tmp_path / "artifacts"
+    summary, df = run_rmcpe(files, cfg, output_dir=out_dir)
+
+    summary_path = out_dir / "window_period_summary.json"
+    csv_path = out_dir / "window_period_per_file.csv"
+    assert summary_path.exists()
+    assert csv_path.exists()
+    assert json.loads(summary_path.read_text())["algorithm"] == summary["algorithm"]
+    assert len(df) == len(files)
+
+
+def test_run_rmcpe_warns_for_likely_micro_period_lock(caplog):
+    files = [_impulse_train(20000, 20, phase=0, amplitude=3.0, seed=1, noise=0.0)]
+    cfg = RMCPEConfig(T_min=15.0, T_max=25.0, prominence=0.1, bootstrap_count=20)
+
+    with caplog.at_level("WARNING"):
+        run_rmcpe(files, cfg, output_dir=Path.cwd(), write_artifacts=False)
+
+    assert any("micro-period lock" in rec.message for rec in caplog.records)
