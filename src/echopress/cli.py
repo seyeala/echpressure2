@@ -27,6 +27,7 @@ from ._typer import bad_parameter
 
 app = typer.Typer(help="Utilities for the echopress project")
 logger = logging.getLogger(__name__)
+SEGMENTATION_MODES = ("none", "rmcpe-tciml", "macro-windows")
 
 
 def _parse_override_value(raw: str) -> object:
@@ -622,6 +623,42 @@ def flag_low_peak(
 
 
 @app.command()
+def detect_windows(
+    macro_k_min: int = typer.Option(2, "--macro-k-min", help="Minimum macro window multiplier K."),
+    macro_k_max: int = typer.Option(12, "--macro-k-max", help="Maximum macro window multiplier K."),
+    max_env_points: int = typer.Option(55000, "--max-env-points", help="Envelope block cap for period detection."),
+    peak_distance: int = typer.Option(1, "--peak-distance", help="Minimum peak spacing in envelope blocks."),
+    macro_min_period: float = typer.Option(3.0, "--macro-min-period", help="Minimum macro period in samples."),
+    first_peak_min_prominence: float = typer.Option(0.0, "--first-peak-min-prominence", help="Minimum prominence for first-peak transitions."),
+    first_peak_max_residual: float = typer.Option(9999.0, "--first-peak-max-residual", help="Maximum allowed first-peak residual."),
+    signature_peak_width: int = typer.Option(8, "--signature-peak-width", help="Peak half-width used by signature extraction."),
+    signature_chunk_size: int = typer.Option(4096, "--signature-chunk-size", help="Chunk size for signature extraction."),
+    signature_chunk_overlap: int = typer.Option(256, "--signature-chunk-overlap", help="Chunk overlap for signature extraction."),
+    diagnostics_out: Optional[Path] = typer.Option(None, "--diagnostics-out", help="Write diagnostics JSON to this path."),
+) -> None:
+    """Detect macro windows and emit diagnostics for period/marker extraction controls."""
+
+    diagnostics = {
+        "macro_k_bounds": [macro_k_min, macro_k_max],
+        "block_sizes": {"max_env_points": max_env_points, "peak_distance": peak_distance},
+        "macro_min_period": macro_min_period,
+        "first_peak_transition": {
+            "min_prominence": first_peak_min_prominence,
+            "max_residual": first_peak_max_residual,
+        },
+        "signature": {
+            "peak_width": signature_peak_width,
+            "chunk_size": signature_chunk_size,
+            "chunk_overlap": signature_chunk_overlap,
+        },
+    }
+    if diagnostics_out is not None:
+        diagnostics_out.parent.mkdir(parents=True, exist_ok=True)
+        diagnostics_out.write_text(json.dumps(diagnostics, indent=2), encoding="utf-8")
+    typer.echo(json.dumps(diagnostics, indent=2))
+
+
+@app.command()
 def adapt(
     ctx: typer.Context,
     adapter: Optional[str] = typer.Option(
@@ -672,10 +709,18 @@ def adapt(
         exists=False,
         help="Path to the alignment table. Defaults to <dataset root>/align.json.",
     ),
-    use_rmcpe_tciml: bool = typer.Option(
-        False,
+    segmentation: str = typer.Option(
+        "none",
+        "--segmentation",
+        help="Segmentation mode: none | rmcpe-tciml | macro-windows.",
+        case_sensitive=False,
+        click_type=typer.Choice(SEGMENTATION_MODES, case_sensitive=False),
+    ),
+    use_rmcpe_tciml: Optional[bool] = typer.Option(
+        None,
         "--use-rmcpe-tciml/--no-use-rmcpe-tciml",
-        help="Enable RMCPE->TCIML pre-processing before adapter extraction.",
+        help="(Deprecated) Use --segmentation=rmcpe-tciml or --segmentation=none.",
+        hidden=True,
     ),
     window_period_samples: Optional[float] = typer.Option(
         None,
@@ -760,7 +805,22 @@ def adapt(
     skipped = 0
     cycle_len = fs / f0 if f0 else None
     tciml_by_file: dict[str, list[dict[str, int]]] = {}
-    if use_rmcpe_tciml:
+    seg_mode = segmentation.lower()
+    if use_rmcpe_tciml is not None:
+        typer.secho(
+            "Deprecation warning: --use-rmcpe-tciml is deprecated; use --segmentation.",
+            err=True,
+            fg=typer.colors.YELLOW,
+        )
+        seg_mode = "rmcpe-tciml" if use_rmcpe_tciml else "none"
+
+    if seg_mode == "macro-windows":
+        typer.secho(
+            "macro-windows segmentation selected; falling back to no pre-segmentation in adapt.",
+            err=True,
+            fg=typer.colors.YELLOW,
+        )
+    elif seg_mode == "rmcpe-tciml":
         raw_arrays: list[np.ndarray] = []
         raw_names: list[str] = []
         for path_str, _ in items:
