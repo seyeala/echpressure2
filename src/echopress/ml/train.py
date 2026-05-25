@@ -32,6 +32,15 @@ def run_train(cfg: PressureTrainConfig):
     h=model.fit(Xtr,ytr,validation_data=(Xva,yva),epochs=int(tcfg.get("epochs",300)),batch_size=int(tcfg.get("batch_size",32)),verbose=int(tcfg.get("verbose",1)),callbacks=cb)
     model.save(out/"model.keras")
     pd.DataFrame(h.history).to_csv(out/"history.csv", index=False)
+    try:
+        import matplotlib.pyplot as plt
+        plt.figure()
+        if "loss" in h.history: plt.plot(h.history["loss"], label="train_loss")
+        if "val_loss" in h.history: plt.plot(h.history["val_loss"], label="val_loss")
+        plt.xlabel("epoch"); plt.ylabel("loss"); plt.legend(); plt.tight_layout()
+        plt.savefig(out / "training_history.png", dpi=170); plt.close()
+    except Exception:
+        pass
     val_pred = model.predict(Xva, verbose=0).reshape(-1) * prep["y_std"] + prep["y_mean"]
     y_true = y[va]
     mae=float(np.mean(np.abs(val_pred-y_true))); rmse=float(np.sqrt(np.mean((val_pred-y_true)**2)))
