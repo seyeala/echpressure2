@@ -106,7 +106,7 @@ def load_alignment_rows(cfg: MacroDetectorConfig) -> pd.DataFrame:
         pp = Path(str(p))
         if pp.is_absolute():
             return str(pp.resolve())
-        return str((cfg.dataset_root / pp.name).resolve())
+        return str((cfg.dataset_root / pp).resolve())
 
     rows["path"] = rows["path"].map(resolve_path)
 
