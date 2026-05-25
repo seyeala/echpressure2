@@ -189,6 +189,33 @@ def _resolve_config(cfg: MacroDetectorConfig) -> dict[str, object]:
     resolved["output_dir"] = str(Path(cfg.output_dir))
     return resolved
 
+
+def build_peak_to_peak_window_index(first_peak_df: pd.DataFrame, t_global_samples: float) -> pd.DataFrame:
+    rows = []
+    for _, grp in first_peak_df.groupby("path"):
+        g = grp.sort_values("first_peak_idx").reset_index(drop=True)
+        for i in range(len(g) - 1):
+            start_peak = int(g.iloc[i]["first_peak_idx"])
+            end_peak = int(g.iloc[i + 1]["first_peak_idx"])
+            rows.append(
+                {
+                    "path": g.iloc[i]["path"],
+                    "file": g.iloc[i]["file"],
+                    "pressure_value": g.iloc[i]["pressure_value"],
+                    "file_index": int(g.iloc[i]["file_index"]),
+                    "peak_to_peak_window_index": i,
+                    "start_first_peak_idx": start_peak,
+                    "end_first_peak_idx": end_peak,
+                    "window_len_samples": int(end_peak - start_peak),
+                    "T_global_samples": float(t_global_samples),
+                    "used_for_common_peak_to_peak_window": bool(
+                        bool(g.iloc[i].get("used_for_backward_common_window", False))
+                        and bool(g.iloc[i + 1].get("used_for_backward_common_window", False))
+                    ),
+                }
+            )
+    return pd.DataFrame(rows)
+
 def run_macro_detection(cfg: MacroDetectorConfig) -> dict:
     rcfg = _resolve_config(cfg)
     cfg = MacroDetectorConfig(
@@ -204,6 +231,7 @@ def run_macro_detection(cfg: MacroDetectorConfig) -> dict:
     diag_dir.mkdir(exist_ok=True)
     align = load_alignment_rows(cfg)
     align.to_csv(out / "alignment_filtered.csv", index=False)
+    align[["path", "file"]].to_csv(out / "selected_files.csv", index=False)
 
     if not cfg.quiet:
         ae = align["alignment_error"] if "alignment_error" in align.columns else None
@@ -374,6 +402,9 @@ def run_macro_detection(cfg: MacroDetectorConfig) -> dict:
     reg_df = pd.concat(final, ignore_index=True) if final else reg_df
     reg_df.to_csv(out / "first_peak_index.registered.csv", index=False)
     counts_df.to_csv(out / "backward_full_window_counts.csv", index=False)
+
+    p2p_df = build_peak_to_peak_window_index(first_df, T_global)
+    p2p_df.to_csv(out / "peak_to_peak_window_index.csv", index=False)
 
     if cfg.write_signatures:
         sig_rows = reg_df[reg_df.get("used_for_backward_common_window", False)].copy()
