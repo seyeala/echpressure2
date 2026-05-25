@@ -21,6 +21,10 @@ from .core.calibration import apply_calibration
 from .core.mapping import align_streams
 from .core.macro_detector import MacroDetectorConfig, run_macro_detection
 from .core.echo_peaks import EchoPeakConfig, run_echo_peak_detection
+from .core.align_cleaner import AlignCleanerConfig, run_align_clean
+from .core.peak_window_postprocess import PeakWindowPostprocessConfig, run_peak_window_postprocess
+from .core.fft_export import FFTExportConfig, run_fft_postprocessed
+from .core.qc_plots import QCPlotConfig, run_qc_plot
 from .core.rmcpe import RMCPEConfig, run_rmcpe
 from .core.tables import File2PressureMap, OscFiles, Signals, export_tables
 from .core.tciml import TCIMLConfig, run_tciml
@@ -758,6 +762,61 @@ def detect_echo_peaks(
     )
     summary = run_echo_peak_detection(cfg)
     typer.echo(json.dumps(summary, indent=2, default=float))
+
+
+@app.command("clean-align")
+def clean_align(
+    align_table: Path = typer.Option(..., "--align-table", dir_okay=False, file_okay=True, exists=True),
+    output_dir: Path = typer.Option(..., "--output-dir", dir_okay=True, file_okay=False),
+    config: Optional[Path] = typer.Option(None, "--config", dir_okay=False, file_okay=True),
+    alignment_error_max: Optional[float] = typer.Option(1.0, "--alignment-error-max"),
+    pressure_min: Optional[float] = typer.Option(None, "--pressure-min"),
+    pressure_max: Optional[float] = typer.Option(None, "--pressure-max"),
+) -> None:
+    summary = run_align_clean(AlignCleanerConfig(align_table=align_table, output_dir=output_dir, config=config, alignment_error_max=alignment_error_max, pressure_min=pressure_min, pressure_max=pressure_max))
+    typer.echo(json.dumps(summary, indent=2, default=float))
+
+
+@app.command("postprocess-peak-windows")
+def postprocess_peak_windows(
+    echo_dir: Path = typer.Option(..., "--echo-dir", dir_okay=True, file_okay=False, exists=True),
+    output_dir: Path = typer.Option(..., "--output-dir", dir_okay=True, file_okay=False),
+    config: Optional[Path] = typer.Option(None, "--config", dir_okay=False, file_okay=True),
+    max_echo_peak_order: Optional[int] = typer.Option(3, "--max-echo-peak-order"),
+) -> None:
+    summary = run_peak_window_postprocess(PeakWindowPostprocessConfig(echo_dir=echo_dir, output_dir=output_dir, config=config, max_echo_peak_order=max_echo_peak_order))
+    typer.echo(json.dumps(summary, indent=2, default=float))
+
+
+@app.command("fft-postprocessed")
+def fft_postprocessed(
+    postprocess_dir: Path = typer.Option(..., "--postprocess-dir", dir_okay=True, file_okay=False, exists=True),
+    output_dir: Path = typer.Option(..., "--output-dir", dir_okay=True, file_okay=False),
+    config: Optional[Path] = typer.Option(None, "--config", dir_okay=False, file_okay=True),
+    fft_bins: Optional[int] = typer.Option(256, "--fft-bins"),
+) -> None:
+    summary = run_fft_postprocessed(FFTExportConfig(postprocess_dir=postprocess_dir, output_dir=output_dir, config=config, fft_bins=fft_bins))
+    typer.echo(json.dumps(summary, indent=2, default=float))
+
+
+@app.command("plot-macro-qc")
+def plot_macro_qc(input_dir: Path = typer.Option(..., "--input-dir", dir_okay=True, file_okay=False, exists=True), output_dir: Path = typer.Option(..., "--output-dir", dir_okay=True, file_okay=False)) -> None:
+    typer.echo(json.dumps(run_qc_plot(QCPlotConfig(stage="macro", input_dir=input_dir, output_dir=output_dir)), indent=2))
+
+
+@app.command("plot-echo-qc")
+def plot_echo_qc(input_dir: Path = typer.Option(..., "--input-dir", dir_okay=True, file_okay=False, exists=True), output_dir: Path = typer.Option(..., "--output-dir", dir_okay=True, file_okay=False)) -> None:
+    typer.echo(json.dumps(run_qc_plot(QCPlotConfig(stage="echo", input_dir=input_dir, output_dir=output_dir)), indent=2))
+
+
+@app.command("plot-postprocess-qc")
+def plot_postprocess_qc(input_dir: Path = typer.Option(..., "--input-dir", dir_okay=True, file_okay=False, exists=True), output_dir: Path = typer.Option(..., "--output-dir", dir_okay=True, file_okay=False)) -> None:
+    typer.echo(json.dumps(run_qc_plot(QCPlotConfig(stage="postprocess", input_dir=input_dir, output_dir=output_dir)), indent=2))
+
+
+@app.command("plot-fft-qc")
+def plot_fft_qc(input_dir: Path = typer.Option(..., "--input-dir", dir_okay=True, file_okay=False, exists=True), output_dir: Path = typer.Option(..., "--output-dir", dir_okay=True, file_okay=False)) -> None:
+    typer.echo(json.dumps(run_qc_plot(QCPlotConfig(stage="fft", input_dir=input_dir, output_dir=output_dir)), indent=2))
 
 
 @app.command()
