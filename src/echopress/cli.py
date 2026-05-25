@@ -1136,6 +1136,20 @@ def eval_pressure_regressor(
     typer.echo(json.dumps({"status": "ok", "model_dir": str(model_dir), "split": split}, indent=2))
 
 
+@app.command("train-pressure-baseline")
+def train_pressure_baseline(
+    fft_dir: Path = typer.Option(..., "--fft-dir", file_okay=False, dir_okay=True),
+    output_dir: Path = typer.Option(..., "--output-dir", file_okay=False, dir_okay=True),
+    config: Optional[Path] = typer.Option(None, "--config", dir_okay=False, file_okay=True),
+) -> None:
+    dataset_dir = output_dir / "pressure_regression_dataset"
+    model_dir = output_dir / "pressure_regressor_tf"
+    build_pressure_dataset(PressureDatasetConfig(fft_dir=fft_dir, output_dir=dataset_dir, config=config))
+    run_train(PressureTrainConfig(dataset_dir=dataset_dir, output_dir=model_dir, config=config))
+    run_evaluate(PressureEvalConfig(dataset_dir=dataset_dir, model_dir=model_dir, split="test"))
+    typer.echo(json.dumps({"status": "ok", "dataset_dir": str(dataset_dir), "model_dir": str(model_dir)}, indent=2))
+
+
 @app.command()
 def viz(ctx: typer.Context, signal: str) -> None:
     """Visualise ``signal`` using matplotlib if available."""
