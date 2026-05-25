@@ -9,6 +9,7 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
+from echopress.core.config_io import merge_config, write_resolved_config
 from echopress.core.macro_windows import (
     FirstPeakConfig,
     MacroConfig,
@@ -28,6 +29,7 @@ class MacroDetectorConfig:
     dataset_root: Path
     align_table: Path
     output_dir: Path
+    config: Optional[Path] = None
     channel: int = 0
     k_min: int = 1
     k_max: int = 20
@@ -168,9 +170,36 @@ def select_dataset_global_k(all_k_scores: pd.DataFrame, cfg: MacroDetectorConfig
     return int(round(select_global_k(agg)))
 
 
+
+
+def _resolve_config(cfg: MacroDetectorConfig) -> dict[str, object]:
+    cli_values = {
+        key: value
+        for key, value in asdict(cfg).items()
+        if key not in {"dataset_root", "align_table", "output_dir", "config"}
+    }
+    default_yml = Path(__file__).resolve().parents[3] / "configs" / "macro_windows.default.yml"
+    resolved = merge_config(
+        default_yaml_path=default_yml,
+        user_yaml_path=Path(cfg.config) if cfg.config is not None else None,
+        cli_values=cli_values,
+    )
+    resolved["dataset_root"] = str(Path(cfg.dataset_root))
+    resolved["align_table"] = str(Path(cfg.align_table))
+    resolved["output_dir"] = str(Path(cfg.output_dir))
+    return resolved
+
 def run_macro_detection(cfg: MacroDetectorConfig) -> dict:
+    rcfg = _resolve_config(cfg)
+    cfg = MacroDetectorConfig(
+        dataset_root=Path(rcfg["dataset_root"]),
+        align_table=Path(rcfg["align_table"]),
+        output_dir=Path(rcfg["output_dir"]),
+        **{k: v for k, v in rcfg.items() if k not in {"dataset_root", "align_table", "output_dir"}},
+    )
     out = cfg.output_dir
     out.mkdir(parents=True, exist_ok=True)
+    write_resolved_config(rcfg, out / "detect-macro-windows_config.resolved.yml")
     diag_dir = out / "diagnostics"
     diag_dir.mkdir(exist_ok=True)
     align = load_alignment_rows(cfg)

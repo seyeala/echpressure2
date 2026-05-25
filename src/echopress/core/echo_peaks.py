@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 from scipy.signal import find_peaks, hilbert
 
+from echopress.core.config_io import merge_config, write_resolved_config
 from echopress.ingest import load_ostream
 
 
@@ -56,35 +57,6 @@ DEFAULTS: dict[str, Any] = {
     "progress_every": 25,
     "quiet": False,
 }
-
-def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[3]
-
-def _yaml_load(path: Path) -> dict[str, Any]:
-    import yaml
-    if not path.exists():
-        return {}
-    obj = yaml.safe_load(path.read_text(encoding="utf-8"))
-    return obj or {}
-
-def _yaml_dump(obj: dict[str, Any], path: Path) -> None:
-    import yaml
-    path.write_text(yaml.safe_dump(obj, sort_keys=False), encoding="utf-8")
-
-def _resolve_config(cfg: EchoPeakConfig) -> dict[str, Any]:
-    resolved = dict(DEFAULTS)
-    default_yml = _repo_root() / "configs" / "echo_peaks.default.yml"
-    resolved.update(_yaml_load(default_yml))
-    if cfg.config is not None:
-        resolved.update(_yaml_load(Path(cfg.config)))
-    for key, value in asdict(cfg).items():
-        if key in {"detection_dir", "output_dir", "config"}:
-            continue
-        if value is not None:
-            resolved[key] = value
-    resolved["detection_dir"] = str(Path(cfg.detection_dir))
-    resolved["output_dir"] = str(Path(cfg.output_dir) if cfg.output_dir is not None else Path(cfg.detection_dir) / "echo_peaks")
-    return resolved
 
 def _load_channel(path: Path, channel: int) -> tuple[np.ndarray, float]:
     o = load_ostream(path, window_mode=False)
@@ -171,7 +143,7 @@ def run_echo_peak_detection(cfg: EchoPeakConfig) -> dict[str, Any]:
         raise ValueError("--hilbert-frac must be in (0, 1].")
     if max_peaks_per_window <= 0:
         raise ValueError("--max-peaks-per-window must be positive.")
-    _yaml_dump(rcfg, output_dir / "echo_peak_config.resolved.yml")
+    write_resolved_config(rcfg, output_dir / "detect-echo-peaks_config.resolved.yml")
     file_groups = list(peaks.groupby("path"))
     total_files = len(file_groups)
     echo_rows=[]; window_rows=[]; cleaned_windows=[]; cleaned_index=[]
