@@ -34,6 +34,7 @@ class EchoPeakConfig:
     min_distance_samples: Optional[int] = None
     refine_radius_samples: Optional[int] = None
     max_peaks_per_window: Optional[int] = None
+    fallback_to_t_global_window_end: Optional[bool] = None
 
     save_cleaned_windows: Optional[bool] = None
     progress_every: Optional[int] = None
@@ -42,7 +43,7 @@ class EchoPeakConfig:
 
 DEFAULTS: dict[str, Any] = {
     "channel": 0,
-    "use_registered": True,
+    "use_registered": False,
     "zero_before_us": 0.0,
     "zero_after_us": 2.0,
     "zero_before_samples": 0,
@@ -53,11 +54,27 @@ DEFAULTS: dict[str, Any] = {
     "min_distance_samples": 200,
     "refine_radius_samples": 80,
     "max_peaks_per_window": 8,
+    "fallback_to_t_global_window_end": False,
     "save_cleaned_windows": False,
     "progress_every": 25,
     "quiet": False,
 }
 
+
+
+def _resolve_config(cfg: EchoPeakConfig) -> dict[str, Any]:
+    resolved = dict(DEFAULTS)
+    if cfg.config is not None:
+        resolved = merge_config(
+            default_yaml_path=Path("configs/echo_peaks.default.yml"),
+            user_yaml_path=cfg.config,
+            cli_values=asdict(cfg),
+        )
+    else:
+        resolved.update({k: v for k, v in asdict(cfg).items() if v is not None})
+    resolved["detection_dir"] = str(cfg.detection_dir)
+    resolved["output_dir"] = str(cfg.output_dir or (cfg.detection_dir / "echo_peaks"))
+    return resolved
 def _load_channel(path: Path, channel: int) -> tuple[np.ndarray, float]:
     o = load_ostream(path, window_mode=False)
     arr = np.asarray(o.channels)
@@ -136,6 +153,7 @@ def run_echo_peak_detection(cfg: EchoPeakConfig) -> dict[str, Any]:
     min_distance_samples = int(rcfg["min_distance_samples"])
     refine_radius_samples = int(rcfg["refine_radius_samples"])
     max_peaks_per_window = int(rcfg["max_peaks_per_window"])
+    fallback_to_t_global_window_end = bool(rcfg["fallback_to_t_global_window_end"])
     save_cleaned_windows = bool(rcfg["save_cleaned_windows"])
     progress_every = int(rcfg["progress_every"])
     quiet = bool(rcfg["quiet"])
@@ -160,13 +178,25 @@ def run_echo_peak_detection(cfg: EchoPeakConfig) -> dict[str, Any]:
             zero_after = int(rcfg["zero_after_samples"])
         zero_before=max(0,zero_before); zero_after=max(1,zero_after)
         grp = grp.sort_values(["first_peak_idx"]).reset_index(drop=True)
+        first_peaks_sorted = grp["first_peak_idx"].astype(int).to_numpy()
         for local_i,r in grp.iterrows():
-            fp=int(r["first_peak_idx"]); win_start=fp; win_end=min(len(y),fp+T_int)
+            fp=int(r["first_peak_idx"])
+            win_start=fp
+            next_first_peak_idx = int(first_peaks_sorted[local_i + 1]) if local_i + 1 < len(first_peaks_sorted) else None
+            if next_first_peak_idx is not None:
+                win_end = min(len(y), next_first_peak_idx)
+                window_end_source = "next_first_peak"
+            elif fallback_to_t_global_window_end:
+                win_end = min(len(y), fp + T_int)
+                window_end_source = "t_global_fallback"
+            else:
+                win_end = len(y)
+                window_end_source = "signal_end"
             if win_end <= win_start + 8: continue
             raw=y[win_start:win_end].astype(float); clean=raw-float(np.median(raw))
             zero_end_local=min(len(clean),zero_after); clean[0:zero_end_local]=0.0
             search_start_local=zero_end_local; search_end_local=min(len(clean), int(round(hilbert_frac*T_int)))
-            window_base={"path":path_str,"file":Path(path_str).name,"pressure_value":float(r["pressure_value"]),"file_index":int(r["file_index"]) if "file_index" in r and pd.notna(r["file_index"]) else file_i-1,"macro_window_index":int(r["macro_window_index"]) if "macro_window_index" in r and pd.notna(r["macro_window_index"]) else local_i,"registered_window_index":local_i,"T_global_samples":float(T_global),"first_peak_idx":fp,"window_start_idx":win_start,"window_end_idx_exclusive":win_end,"zero_start_idx":fp,"zero_end_idx_exclusive":min(len(y), fp+zero_after),"zero_before_samples":zero_before,"zero_after_samples":zero_after,"hilbert_search_start_idx":fp+search_start_local,"hilbert_search_end_idx_exclusive":fp+search_end_local}
+            window_base={"path":path_str,"file":Path(path_str).name,"pressure_value":float(r["pressure_value"]),"file_index":int(r["file_index"]) if "file_index" in r and pd.notna(r["file_index"]) else file_i-1,"macro_window_index":int(r["macro_window_index"]) if "macro_window_index" in r and pd.notna(r["macro_window_index"]) else local_i,"registered_window_index":local_i,"T_global_samples":float(T_global),"first_peak_idx":fp,"window_start_idx":win_start,"window_end_idx_exclusive":win_end,"window_end_source":window_end_source,"next_first_peak_idx":next_first_peak_idx if next_first_peak_idx is not None else pd.NA,"zero_start_idx":fp,"zero_end_idx_exclusive":min(len(y), fp+zero_after),"zero_before_samples":zero_before,"zero_after_samples":zero_after,"hilbert_search_start_idx":fp+search_start_local,"hilbert_search_end_idx_exclusive":fp+search_end_local}
             if search_end_local <= search_start_local + 4:
                 window_rows.append({**window_base,"n_echo_peaks":0,"status":"search_region_empty"}); continue
             env=np.abs(hilbert(clean)); env_search=env[search_start_local:search_end_local]; env_max=float(np.nanmax(env_search)) if env_search.size else 0.0
