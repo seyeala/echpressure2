@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import numpy as np
 from typer.testing import CliRunner
@@ -85,3 +86,39 @@ def test_adapt_segmentation_mode_dispatch_and_legacy_flag(tmp_path):
     )
     assert legacy.exit_code == 0
     assert "Deprecation warning" in legacy.stdout
+
+
+def test_detect_macro_windows_passes_config_path(tmp_path, monkeypatch):
+    captured = {}
+
+    def _fake_run(cfg):
+        captured["config"] = cfg.config
+        return {"ok": True}
+
+    monkeypatch.setattr("echopress.cli.run_macro_detection", _fake_run)
+
+    dataset_root = tmp_path / "ds"
+    dataset_root.mkdir()
+    align_table = tmp_path / "align.json"
+    align_table.write_text("[]", encoding="utf-8")
+    cfg_path = tmp_path / "macro.yml"
+    cfg_path.write_text("k_min: 3\n", encoding="utf-8")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        [
+            "detect-macro-windows",
+            "--dataset-root",
+            str(dataset_root),
+            "--align-table",
+            str(align_table),
+            "--output-dir",
+            str(tmp_path / "out"),
+            "--config",
+            str(cfg_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert captured["config"] == Path(cfg_path)
