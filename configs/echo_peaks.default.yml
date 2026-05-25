@@ -1,5 +1,5 @@
 channel: 0
-use_registered: true
+use_registered: false
 
 zero_before_us: 0.0
 zero_after_us: 2.0
@@ -12,6 +12,7 @@ min_height_rel: 0.05
 min_distance_samples: 200
 refine_radius_samples: 80
 max_peaks_per_window: 8
+fallback_to_t_global_window_end: false
 
 save_cleaned_windows: false
 progress_every: 25
