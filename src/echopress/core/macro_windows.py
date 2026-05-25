@@ -122,6 +122,54 @@ def generate_first_peak_candidates(window: np.ndarray, cfg: FirstPeakConfig) -> 
     return cands
 
 
+
+
+def generate_first_peak_candidates_fast(
+    seg: np.ndarray,
+    *,
+    max_candidates: int = 5,
+    coarse_block: int = 512,
+    refine_radius: int = 2048,
+) -> tuple[int, ...]:
+    x = np.asarray(seg, dtype=float).reshape(-1)
+    if x.size == 0:
+        return tuple()
+
+    block = max(1, int(coarse_block))
+    radius = max(1, int(refine_radius))
+    n_blocks = int(np.ceil(x.size / block))
+    env = np.empty(n_blocks, dtype=float)
+
+    for b in range(n_blocks):
+        lo = b * block
+        hi = min(x.size, (b + 1) * block)
+        env[b] = np.max(np.abs(x[lo:hi]))
+
+    k = min(max_candidates * 4, env.size)
+    if k <= 0:
+        return tuple()
+    top_blocks = np.argpartition(env, -k)[-k:]
+    top_blocks = top_blocks[np.argsort(env[top_blocks])[::-1]]
+
+    candidates: list[int] = []
+    for b in top_blocks:
+        center = int(b * block)
+        lo = max(0, center - radius)
+        hi = min(x.size, center + block + radius)
+
+        if hi <= lo:
+            continue
+
+        peak = lo + int(np.argmax(np.abs(x[lo:hi])))
+
+        if all(abs(peak - q) > radius for q in candidates):
+            candidates.append(peak)
+
+        if len(candidates) >= max_candidates:
+            break
+
+    return tuple(candidates)
+
 def select_periodic_first_peak_sequence(candidates_per_window: Iterable[tuple[int, ...]], *, expected_k: float, tolerance: float = 0.25) -> FirstPeakSelection:
     cands = list(candidates_per_window)
     if not cands:
@@ -157,5 +205,6 @@ __all__ = [
     "flat_to_burst_score",
     "fit_macro_k_phase",
     "generate_first_peak_candidates",
+    "generate_first_peak_candidates_fast",
     "select_periodic_first_peak_sequence",
 ]

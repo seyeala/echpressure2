@@ -11,12 +11,11 @@ import pandas as pd
 
 from echopress.core.config_io import merge_config, write_resolved_config
 from echopress.core.macro_windows import (
-    FirstPeakConfig,
     MacroConfig,
     build_envelope,
     fit_macro_k_phase,
     flat_to_burst_score,
-    generate_first_peak_candidates,
+    generate_first_peak_candidates_fast,
     select_periodic_first_peak_sequence,
 )
 from echopress.core.signatures import extract_peak_centered, write_signature_chunks
@@ -48,6 +47,8 @@ class MacroDetectorConfig:
     first_peak_search_frac: float = 0.40
     first_peak_max_candidates: int = 5
     first_peak_periodicity_tolerance: float = 0.25
+    first_peak_coarse_block: int = 512
+    first_peak_refine_radius: int = 2048
     backward_full_windows: bool = True
     snap_tol_frac: float = 0.12
     peak_spacing_outlier_mad: float = 3.5
@@ -304,7 +305,7 @@ def run_macro_detection(cfg: MacroDetectorConfig) -> dict:
             or n % cfg.progress_every == 0
             or n == total2
         ):
-            print(_eta_line("window/peak pass", n, total2, t1), flush=True)
+            print(_eta_line("macro-window fit pass", n, total2, t1), flush=True)
         sig = np.asarray(load_ostream(Path(item["path"])).channels)
         sig = sig[:, cfg.channel] if sig.ndim == 2 else sig.reshape(-1)
         env = item["env"]
@@ -326,8 +327,24 @@ def run_macro_detection(cfg: MacroDetectorConfig) -> dict:
     windows_df = pd.DataFrame(windows_all)
     windows_df.to_csv(out / "macro_window_table.csv", index=False)
     windows_df.groupby("path").size().reset_index(name="n_windows").to_csv(out / "macro_window_per_file.csv", index=False)
+    (out / "macro_window_stage_done.json").write_text(
+        json.dumps({"status": "done", "n_windows": int(len(windows_df))}, indent=2),
+        encoding="utf-8",
+    )
 
-    for path, grp in windows_df.groupby("path"):
+    if not cfg.quiet:
+        print("[first-peak index pass] starting", flush=True)
+    peak_groups = list(windows_df.groupby("path"))
+    t_peak = time.time()
+    total_peak = len(peak_groups)
+
+    for pi, (path, grp) in enumerate(peak_groups, start=1):
+        if not cfg.quiet and (
+            pi == 1
+            or pi % cfg.progress_every == 0
+            or pi == total_peak
+        ):
+            print(_eta_line("first-peak index pass", pi, total_peak, t_peak), flush=True)
         sig = np.asarray(load_ostream(Path(path)).channels)
         sig = sig[:, cfg.channel] if sig.ndim == 2 else sig.reshape(-1)
         cands_per = []
@@ -337,9 +354,13 @@ def run_macro_detection(cfg: MacroDetectorConfig) -> dict:
             wl = max(1, we - ws)
             search_end = min(we, ws + int(round(cfg.first_peak_search_frac * wl)))
             seg = sig[ws:search_end]
-            fp_cfg = FirstPeakConfig(k=float(wl), periodicity_tolerance=cfg.first_peak_periodicity_tolerance)
-            cands = generate_first_peak_candidates(seg, fp_cfg)
-            picks = [ws + int(c) for c in cands[: cfg.first_peak_max_candidates]]
+            cands = generate_first_peak_candidates_fast(
+                seg,
+                max_candidates=cfg.first_peak_max_candidates,
+                coarse_block=cfg.first_peak_coarse_block,
+                refine_radius=cfg.first_peak_refine_radius,
+            )
+            picks = [ws + int(c) for c in cands]
             cands_per.append(tuple(picks))
             local.append((w, picks))
         seq = select_periodic_first_peak_sequence(cands_per, expected_k=float(np.median(np.diff(grp["macro_window_start_idx"])) if len(grp) > 1 else 1.0), tolerance=cfg.first_peak_periodicity_tolerance)
@@ -351,6 +372,8 @@ def run_macro_detection(cfg: MacroDetectorConfig) -> dict:
 
     first_df = pd.DataFrame(peaks_all)
     first_df.to_csv(out / "first_peak_index.csv", index=False)
+    if not cfg.quiet:
+        print(f"[first-peak index pass] wrote {out / 'first_peak_index.csv'}", flush=True)
 
     spacings = []
     for _, grp in first_df.groupby("path"):
