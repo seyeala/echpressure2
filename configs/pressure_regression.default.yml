@@ -1,0 +1,36 @@
+dataset:
+  feature_source: fft_relative_db
+  target_column: pressure_value
+  freq_min_cycles_per_window: 0.5
+  freq_max_cycles_per_window: 200.0
+  bin_average: 4
+  require_finite: true
+  drop_nan_targets: true
+split:
+  method: pressure_stratified
+  train_frac: 0.70
+  val_frac: 0.15
+  test_frac: 0.15
+  pressure_bins: 10
+  random_seed: 42
+preprocess:
+  x_scaler: standard
+  y_scaler: standard
+model:
+  architecture: fft_mlp
+  hidden_units: [256, 128, 64]
+  dropout: 0.10
+  batch_norm: true
+  output_activation: linear
+train:
+  epochs: 300
+  batch_size: 32
+  learning_rate: 0.001
+  loss: mse
+  early_stopping_patience: 30
+  reduce_lr_patience: 12
+  reduce_lr_factor: 0.5
+  min_lr: 0.000001
+  monitor: val_loss
+  random_seed: 42
+  verbose: 1
