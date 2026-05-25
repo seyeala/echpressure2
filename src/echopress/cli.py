@@ -28,6 +28,9 @@ from .core.qc_plots import QCPlotConfig, run_qc_plot
 from .core.rmcpe import RMCPEConfig, run_rmcpe
 from .core.tables import File2PressureMap, OscFiles, Signals, export_tables
 from .core.tciml import TCIMLConfig, run_tciml
+from .ml.dataset import PressureDatasetConfig, build_pressure_dataset
+from .ml.train import PressureTrainConfig, run_train
+from .ml.evaluate import PressureEvalConfig, run_evaluate
 from .config import Settings, load_settings
 from .ingest import DatasetIndexer, load_ostream, read_pstream
 from ._typer import bad_parameter
@@ -1099,6 +1102,38 @@ def adapt(
         return None
 
     return outputs
+
+
+@app.command("build-pressure-regression-dataset")
+def build_pressure_regression_dataset(
+    fft_dir: Path = typer.Option(..., "--fft-dir", file_okay=False, dir_okay=True),
+    output_dir: Path = typer.Option(..., "--output-dir", file_okay=False, dir_okay=True),
+    config: Optional[Path] = typer.Option(None, "--config", dir_okay=False, file_okay=True),
+) -> None:
+    summary = build_pressure_dataset(
+        PressureDatasetConfig(fft_dir=fft_dir, output_dir=output_dir, config=config)
+    )
+    typer.echo(json.dumps(summary, indent=2))
+
+
+@app.command("train-pressure-regressor")
+def train_pressure_regressor(
+    dataset_dir: Path = typer.Option(..., "--dataset-dir", file_okay=False, dir_okay=True),
+    output_dir: Path = typer.Option(..., "--output-dir", file_okay=False, dir_okay=True),
+    config: Optional[Path] = typer.Option(None, "--config", dir_okay=False, file_okay=True),
+) -> None:
+    run_train(PressureTrainConfig(dataset_dir=dataset_dir, output_dir=output_dir, config=config))
+    typer.echo(json.dumps({"status": "ok", "output_dir": str(output_dir)}, indent=2))
+
+
+@app.command("eval-pressure-regressor")
+def eval_pressure_regressor(
+    dataset_dir: Path = typer.Option(..., "--dataset-dir", file_okay=False, dir_okay=True),
+    model_dir: Path = typer.Option(..., "--model-dir", file_okay=False, dir_okay=True),
+    split: str = typer.Option("test", "--split"),
+) -> None:
+    run_evaluate(PressureEvalConfig(dataset_dir=dataset_dir, model_dir=model_dir, split=split))
+    typer.echo(json.dumps({"status": "ok", "model_dir": str(model_dir), "split": split}, indent=2))
 
 
 @app.command()
