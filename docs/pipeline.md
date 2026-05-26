@@ -34,18 +34,24 @@ Consumes:
 - `echo_window_index.csv`
 
 Produces:
-- `postprocessed_peak_windows.csv`
-- `postprocess_peak_windows_summary.json`
+- `secondary_peak_processed_waveforms.npy`
+- `secondary_peak_processed_manifest.csv`
+- `secondary_peak_processed_summary.json`
 
 ## Stage 4: fft-postprocessed
 
 Consumes:
-- `postprocessed_peak_windows.csv`
+- `secondary_peak_processed_waveforms.npy`
+- `secondary_peak_processed_manifest.csv`
+- `secondary_peak_processed_summary.json`
 
 Produces:
-- `postprocessed_fft.npy`
-- `postprocessed_fft.csv`
-- `fft_postprocessed_summary.json`
+- `fft_cycles_per_window.npy`
+- `fft_mag.npy`
+- `fft_db.npy`
+- `fft_relative_db.npy`
+- `fft_manifest.csv`
+- `fft_summary.json`
 
 ## Typical directory layout
 
