@@ -11,19 +11,31 @@ def test_fft_export_writes_numpy_csv_and_summary(tmp_path: Path):
     out_dir = tmp_path / "fft"
     post_dir.mkdir()
 
-    pd.DataFrame(
+    manifest = pd.DataFrame(
         {
             "path": ["a", "b", "c"],
             "first_peak_idx": [1, 2, 3],
             "first_echo_offset": [3.0, 5.0, 9.0],
         }
-    ).to_csv(post_dir / "postprocessed_peak_windows.csv", index=False)
+    )
+    manifest.to_csv(post_dir / "secondary_peak_processed_manifest.csv", index=False)
+    np.save(
+        post_dir / "secondary_peak_processed_waveforms.npy",
+        np.array([[1.0, 2.0, 3.0, 4.0], [2.0, 0.0, 2.0, 0.0], [1.0, 1.0, 1.0, 1.0]], dtype=np.float32),
+    )
+    (post_dir / "secondary_peak_processed_summary.json").write_text("{}", encoding="utf-8")
 
     summary = run_fft_postprocessed(FFTExportConfig(postprocess_dir=post_dir, output_dir=out_dir, fft_bins=16))
     assert summary["fft_bins"] == 16
 
-    arr = np.load(out_dir / "postprocessed_fft.npy")
-    assert arr.ndim == 1
-    assert len(arr) == 9
-    table = pd.read_csv(out_dir / "postprocessed_fft.csv")
-    assert len(table) == len(arr)
+    fft_mag = np.load(out_dir / "fft_mag.npy")
+    fft_db = np.load(out_dir / "fft_db.npy")
+    fft_relative_db = np.load(out_dir / "fft_relative_db.npy")
+    fft_cycles = np.load(out_dir / "fft_cycles_per_window.npy")
+    table = pd.read_csv(out_dir / "fft_manifest.csv")
+
+    assert fft_mag.shape == (3, 9)
+    assert fft_db.shape == fft_mag.shape
+    assert fft_relative_db.shape == fft_mag.shape
+    assert fft_cycles.shape == (9,)
+    assert len(table) == 3

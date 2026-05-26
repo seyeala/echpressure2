@@ -16,11 +16,15 @@
 
 ## Postprocess stage outputs
 
-- `postprocessed_peak_windows.csv`: merged window-level features.
-- `postprocess_peak_windows_summary.json`: summary counts.
+- `secondary_peak_processed_waveforms.npy`: processed waveform matrix with shape `[n_files, n_samples]`.
+- `secondary_peak_processed_manifest.csv`: per-row metadata aligned to the waveform matrix.
+- `secondary_peak_processed_summary.json`: summary counts.
 
 ## FFT stage outputs
 
-- `postprocessed_fft.npy`: FFT magnitude vector.
-- `postprocessed_fft.csv`: tabular FFT magnitudes per bin.
-- `fft_postprocessed_summary.json`: summary metadata.
+- `fft_cycles_per_window.npy`: frequency axis for FFT bins (cycles per processed window).
+- `fft_mag.npy`: FFT magnitude matrix.
+- `fft_db.npy`: FFT magnitude in dB.
+- `fft_relative_db.npy`: row-normalized dB features for ML.
+- `fft_manifest.csv`: per-row metadata aligned to FFT matrices.
+- `fft_summary.json`: summary metadata.
