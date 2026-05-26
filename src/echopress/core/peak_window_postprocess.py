@@ -5,6 +5,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Optional
 
+import numpy as np
 import pandas as pd
 
 from echopress.core.config_io import merge_config, write_resolved_config
@@ -34,12 +35,19 @@ def run_peak_window_postprocess(cfg: PeakWindowPostprocessConfig) -> dict[str, A
 
     echo_path = Path(rcfg["echo_dir"]) / "echo_peak_index.csv"
     windows_path = Path(rcfg["echo_dir"]) / "echo_window_index.csv"
-    if not echo_path.exists() or not windows_path.exists():
-        raise FileNotFoundError("postprocess requires echo_peak_index.csv and echo_window_index.csv from detect-echo-peaks")
+    waveforms_path = Path(rcfg["echo_dir"]) / "echo_window_values.npy"
+    if not echo_path.exists() or not windows_path.exists() or not waveforms_path.exists():
+        raise FileNotFoundError(
+            "postprocess-peak-windows requires echo_peak_index.csv, echo_window_index.csv, and echo_window_values.npy from detect-echo-peaks"
+        )
+
     echo = pd.read_csv(echo_path)
     windows = pd.read_csv(windows_path)
+    waveforms = np.load(waveforms_path)
+
     if rcfg.get("max_echo_peak_order") is not None and "echo_peak_order" in echo.columns:
         echo = echo[echo["echo_peak_order"] <= int(rcfg["max_echo_peak_order"])]
+
     features = (
         echo.groupby(["path", "first_peak_idx"], dropna=False)
         .agg(n_echo_peaks_post=("echo_peak_idx", "count"), first_echo_offset=("echo_peak_offset_from_first_peak", "min"))
@@ -47,7 +55,21 @@ def run_peak_window_postprocess(cfg: PeakWindowPostprocessConfig) -> dict[str, A
     )
     merged = windows.merge(features, how="left", on=["path", "first_peak_idx"])
     merged["n_echo_peaks_post"] = merged["n_echo_peaks_post"].fillna(0).astype(int)
-    merged.to_csv(out_dir / "postprocessed_peak_windows.csv", index=False)
-    summary = {"n_windows": int(len(merged)), "n_echo_peaks": int(len(echo))}
-    (out_dir / "postprocess_peak_windows_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+
+    if waveforms.ndim != 2:
+        raise ValueError(f"echo_window_values.npy must be 2D [n_files, window_samples], got shape={waveforms.shape}")
+    if len(merged) != int(waveforms.shape[0]):
+        raise ValueError(
+            f"row count mismatch: echo_window_index.csv has {len(merged)} rows but echo_window_values.npy has {waveforms.shape[0]} windows"
+        )
+
+    np.save(out_dir / "secondary_peak_processed_waveforms.npy", waveforms.astype(np.float32))
+    merged.to_csv(out_dir / "secondary_peak_processed_manifest.csv", index=False)
+
+    summary = {
+        "n_windows": int(len(merged)),
+        "n_echo_peaks": int(len(echo)),
+        "waveform_length": int(waveforms.shape[1]),
+    }
+    (out_dir / "secondary_peak_processed_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     return summary
