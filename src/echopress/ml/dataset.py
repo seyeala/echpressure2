@@ -42,7 +42,7 @@ def build_pressure_dataset(cfg: PressureDatasetConfig) -> dict[str, Any]:
         keep = np.isfinite(y)
         manifest = manifest.loc[keep].reset_index(drop=True); y = y[keep]
     src = str(rcfg.get("feature_source", "fft_relative_db"))
-    name = {"fft_relative_db":"fft_relative_db.npy","fft-relative-db":"fft_relative_db.npy","fft_db":"fft_db.npy","fft-db":"fft_db.npy","fft_mag":"fft_magnitude.npy","fft-mag":"fft_magnitude.npy"}.get(src, "fft_relative_db.npy")
+    name = {"fft_relative_db":"fft_relative_db.npy","fft-relative-db":"fft_relative_db.npy","fft_db":"fft_db.npy","fft-db":"fft_db.npy","fft_mag":"fft_mag.npy","fft-mag":"fft_mag.npy"}.get(src, "fft_relative_db.npy")
     x_all = np.load(fft_dir / name)
     if len(x_all) != len(pd.read_csv(fft_dir / "fft_manifest.csv")):
         raise ValueError("feature rows do not match fft_manifest.csv")

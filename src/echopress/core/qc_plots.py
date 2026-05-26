@@ -35,7 +35,8 @@ def run_qc_plot(cfg: QCPlotConfig) -> dict[str, object]:
         df = pd.read_csv(cfg.input_dir / "postprocessed_peak_windows.csv")
         ax.hist(pd.to_numeric(df["n_echo_peaks_post"], errors="coerce").dropna(), bins=20)
     else:
-        arr = np.load(cfg.input_dir / "postprocessed_fft.npy")
+        arr = np.load(cfg.input_dir / "fft_relative_db.npy")
+        arr = np.mean(arr, axis=0) if arr.ndim == 2 else arr
         ax.plot(arr)
     ax.set_title(f"{cfg.stage} qc")
     out = cfg.output_dir / f"plot-{cfg.stage}-qc.png"
