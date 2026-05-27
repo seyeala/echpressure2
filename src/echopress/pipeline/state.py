@@ -96,8 +96,12 @@ class PipelineState:
     history: List[Dict[str, Any]] = field(default_factory=list)
 
 
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = "1.1"
 STATE_RELATIVE_PATH = Path('.echopress') / 'pipeline_state.json'
+
+
+class PipelineStateMigrationError(RuntimeError):
+    pass
 
 
 def state_path_for(out_dir: Path) -> Path:
@@ -181,16 +185,65 @@ def load_pipeline_state(out_dir: Path) -> Optional[PipelineState]:
     path = state_path_for(out_dir)
     if not path.exists():
         return None
-    raw = json.loads(path.read_text(encoding='utf-8'))
-    stages = {k: PipelineStageRecord(**v) for k, v in raw.get('stages', {}).items()}
-    artifacts = {k: PipelineArtifact(**v) for k, v in raw.get('artifacts', {}).items()}
-    active = {k: PipelineArtifact(**v) for k, v in raw.get('active_artifacts', {}).items()}
-    failures = [PipelineFailure(**v) for v in raw.get('failures', [])]
-    raw['stages'] = stages
-    raw['artifacts'] = artifacts
-    raw['active_artifacts'] = active
-    raw['failures'] = failures
-    return PipelineState(**raw)
+    try:
+        raw = json.loads(path.read_text(encoding='utf-8'))
+        migrated = False
+        resolved_out = out_dir.resolve()
+
+        def _migrate_artifact_dict(v: Dict[str, Any]) -> Dict[str, Any]:
+            nonlocal migrated
+            m = dict(v)
+            p = Path(m.get('path', '')).resolve()
+            in_out_dir = False
+            relative: Optional[Path] = None
+            try:
+                relative = p.relative_to(resolved_out)
+                in_out_dir = True
+            except Exception:
+                in_out_dir = False
+            if 'artifact_scope' not in m:
+                m['artifact_scope'] = 'pipeline' if in_out_dir else 'external'
+                migrated = True
+            rel = m.get('relative_path')
+            rel_valid = isinstance(rel, str) and rel != ''
+            if rel_valid and in_out_dir:
+                try:
+                    (resolved_out / rel).resolve().relative_to(resolved_out)
+                except Exception:
+                    rel_valid = False
+            elif rel_valid and not in_out_dir:
+                rel_valid = False
+            if not rel_valid:
+                m['relative_path'] = str(relative) if in_out_dir and relative is not None else None
+                migrated = True
+            if 'exists' not in m:
+                m['exists'] = p.exists()
+                migrated = True
+            if 'status' not in m:
+                m['status'] = 'ok' if m.get('exists') else 'missing'
+                migrated = True
+            return m
+
+        raw['artifacts'] = {k: _migrate_artifact_dict(v) for k, v in raw.get('artifacts', {}).items()}
+        raw['active_artifacts'] = {k: _migrate_artifact_dict(v) for k, v in raw.get('active_artifacts', {}).items()}
+        if raw.get('schema_version') != SCHEMA_VERSION:
+            raw['schema_version'] = SCHEMA_VERSION
+            migrated = True
+
+        stages = {k: PipelineStageRecord(**v) for k, v in raw.get('stages', {}).items()}
+        artifacts = {k: PipelineArtifact(**v) for k, v in raw.get('artifacts', {}).items()}
+        active = {k: PipelineArtifact(**v) for k, v in raw.get('active_artifacts', {}).items()}
+        failures = [PipelineFailure(**v) for v in raw.get('failures', [])]
+        raw['stages'] = stages
+        raw['artifacts'] = artifacts
+        raw['active_artifacts'] = active
+        raw['failures'] = failures
+        state = PipelineState(**raw)
+        if migrated:
+            save_pipeline_state(state)
+        return state
+    except Exception as exc:
+        raise PipelineStateMigrationError(f'Failed to migrate or load pipeline state at {path}: {exc}') from exc
 
 
 def build_artifact(out_dir: Path, logical_name: str, path: Path, producer_stage: Optional[str] = None, required_columns: Optional[List[str]] = None, actual_columns: Optional[List[str]] = None, row_count: Optional[int] = None, status: ArtifactStatus = 'ok') -> PipelineArtifact:
