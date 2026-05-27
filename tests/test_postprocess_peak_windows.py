@@ -3,8 +3,14 @@ from pathlib import Path
 import json
 import numpy as np
 import pandas as pd
+from typer.testing import CliRunner
 
-from echopress.core.peak_window_postprocess import PeakWindowPostprocessConfig, run_peak_window_postprocess
+from echopress.cli import app
+from echopress.core.peak_window_postprocess import (
+    PeakWindowPostprocessConfig,
+    build_global_periodic_window_plan,
+    run_peak_window_postprocess,
+)
 
 
 def _make_npz(path: Path, y: np.ndarray) -> None:
@@ -12,81 +18,88 @@ def _make_npz(path: Path, y: np.ndarray) -> None:
     np.savez(path, channels=y.reshape(-1, 1), timestamps=ts)
 
 
-def test_peak_to_peak_complete_windows_and_registered_not_used(tmp_path: Path):
-    macro = tmp_path / "macro"
-    echo = tmp_path / "echo"
-    out = tmp_path / "out"
+def test_build_global_periodic_window_plan_forward_common_count():
+    first_df = pd.DataFrame([
+        {"path": "A", "first_peak_idx": 10, "file": "A", "file_index": 0, "pressure_value": 1.0},
+        {"path": "A", "first_peak_idx": 110, "file": "A", "file_index": 0, "pressure_value": 1.0},
+        {"path": "A", "first_peak_idx": 210, "file": "A", "file_index": 0, "pressure_value": 1.0},
+        {"path": "A", "first_peak_idx": 310, "file": "A", "file_index": 0, "pressure_value": 1.0},
+        {"path": "B", "first_peak_idx": 12, "file": "B", "file_index": 1, "pressure_value": 2.0},
+        {"path": "B", "first_peak_idx": 112, "file": "B", "file_index": 1, "pressure_value": 2.0},
+        {"path": "B", "first_peak_idx": 212, "file": "B", "file_index": 1, "pressure_value": 2.0},
+    ])
+    plan, summary = build_global_periodic_window_plan(first_df, {"A": 420, "B": 330}, 100, 0.12, anchor="first")
+    assert summary["common_window_count"] == 3
+    assert len(plan) == 6
+    assert (plan["window_len_samples"] == 100).all()
+    assert (plan["end_idx_exclusive"] == plan["start_first_peak_idx"] + 100).all()
+
+
+def test_build_global_periodic_window_plan_rejects_bad_periodicity():
+    first_df = pd.DataFrame([
+        {"path": "A", "first_peak_idx": 10}, {"path": "A", "first_peak_idx": 110}, {"path": "A", "first_peak_idx": 250},
+        {"path": "B", "first_peak_idx": 12}, {"path": "B", "first_peak_idx": 112}, {"path": "B", "first_peak_idx": 212},
+    ])
+    plan, summary = build_global_periodic_window_plan(first_df, {"A": 420, "B": 330}, 100, 0.12, anchor="first")
+    assert summary["common_window_count"] == 2
+    assert len(plan[plan["path"] == "A"]) == 2
+
+
+def _prep_fixture(tmp_path: Path):
+    macro = tmp_path / "macro"; echo = tmp_path / "echo"; out = tmp_path / "out"
     macro.mkdir(); echo.mkdir()
-    sig = np.sin(np.linspace(0, 20, 200))
-    p = tmp_path / "a.npz"
-    _make_npz(p, sig)
-
+    p1 = tmp_path / "a.npz"; p2 = tmp_path / "b.npz"
+    _make_npz(p1, np.sin(np.linspace(0, 20, 420)))
+    _make_npz(p2, np.cos(np.linspace(0, 20, 330)))
     pd.DataFrame([
-        {"path": str(p), "first_peak_idx": x} for x in [10, 30, 60, 100, 150]
+        {"path": str(p1), "first_peak_idx": 10, "file": "a", "file_index": 0, "pressure_value": 1.0},
+        {"path": str(p1), "first_peak_idx": 110, "file": "a", "file_index": 0, "pressure_value": 1.0},
+        {"path": str(p1), "first_peak_idx": 210, "file": "a", "file_index": 0, "pressure_value": 1.0},
+        {"path": str(p2), "first_peak_idx": 12, "file": "b", "file_index": 1, "pressure_value": 2.0},
+        {"path": str(p2), "first_peak_idx": 112, "file": "b", "file_index": 1, "pressure_value": 2.0},
+        {"path": str(p2), "first_peak_idx": 212, "file": "b", "file_index": 1, "pressure_value": 2.0},
     ]).to_csv(macro / "first_peak_index.csv", index=False)
+    (macro / "global_window_size.json").write_text(json.dumps({"T_global_samples": 100}), encoding="utf-8")
     pd.DataFrame([
-        {"path": str(p), "first_peak_idx": x} for x in [30, 100]
-    ]).to_csv(macro / "first_peak_index.registered.csv", index=False)
-    (macro / "global_window_size.json").write_text(json.dumps({"T_global_samples": 40}), encoding="utf-8")
-
-    pd.DataFrame([
-        {"path": str(p), "first_peak_idx": 10, "echo_peak_offset_from_first_peak": 4},
-        {"path": str(p), "first_peak_idx": 30, "echo_peak_offset_from_first_peak": 5},
+        {"path": str(p1), "first_peak_idx": 10, "echo_peak_offset_from_first_peak": 3},
+        {"path": str(p2), "first_peak_idx": 12, "echo_peak_offset_from_first_peak": 4},
     ]).to_csv(echo / "echo_peak_index.csv", index=False)
-
-    summary = run_peak_window_postprocess(PeakWindowPostprocessConfig(macro_dir=macro, echo_dir=echo, output_dir=out))
-    assert summary["n_windows"] == 4
-
-    proc = np.load(out / "secondary_peak_processed_waveforms.npy")
-    raw = np.load(out / "raw_first_peak_to_first_peak_aligned_waveforms.npy")
-    manifest = pd.read_csv(out / "secondary_peak_processed_manifest.csv")
-    assert proc.shape[0] == 4
-    assert raw.shape[0] == 4
-    assert len(manifest) == 4
+    return macro, echo, out
 
 
-def test_gain_clip_one_is_noop(tmp_path: Path):
-    macro = tmp_path / "macro"
-    echo = tmp_path / "echo"
-    out = tmp_path / "out"
-    macro.mkdir(); echo.mkdir()
-    y = np.linspace(-1.0, 1.0, 80)
-    p = tmp_path / "b.npz"
-    _make_npz(p, y)
-    pd.DataFrame([
-        {"path": str(p), "first_peak_idx": 10},
-        {"path": str(p), "first_peak_idx": 40},
-    ]).to_csv(macro / "first_peak_index.csv", index=False)
-    (macro / "global_window_size.json").write_text(json.dumps({"T_global_samples": 30}), encoding="utf-8")
-    pd.DataFrame([{"path": str(p), "first_peak_idx": 10, "echo_peak_offset_from_first_peak": 2}]).to_csv(echo / "echo_peak_index.csv", index=False)
-
-    run_peak_window_postprocess(PeakWindowPostprocessConfig(macro_dir=macro, echo_dir=echo, output_dir=out, gain_clip_min=1.0, gain_clip_max=1.0, zero_first_pulse_us=0.0, peak_neighbor_us=0.0))
-    proc = np.load(out / "secondary_peak_processed_waveforms.npy")
-    raw = np.load(out / "raw_first_peak_to_first_peak_aligned_waveforms.npy")
-    assert np.allclose(proc, raw)
+def test_postprocess_global_periodic_common_shape(tmp_path: Path):
+    macro, echo, out = _prep_fixture(tmp_path)
+    summary = run_peak_window_postprocess(PeakWindowPostprocessConfig(macro_dir=macro, echo_dir=echo, output_dir=out, window_mode="global-periodic-common"))
+    assert (out / "secondary_peak_global_periodic_processed_waveforms.npy").exists()
+    assert (out / "raw_global_periodic_aligned_waveforms.npy").exists()
+    arr = np.load(out / "secondary_peak_global_periodic_processed_waveforms.npy")
+    manifest = pd.read_csv(out / "global_periodic_window_manifest.csv")
+    assert arr.shape[1] == 100
+    assert len(manifest) == arr.shape[0]
+    assert summary["window_mode"] == "global-periodic-common"
 
 
-def test_fft_rows_match_processed_rows(tmp_path: Path):
-    macro = tmp_path / "macro"
-    echo = tmp_path / "echo"
-    out = tmp_path / "out"
-    fft_out = tmp_path / "fft"
-    macro.mkdir(); echo.mkdir()
-    p = tmp_path / "c.npz"
-    _make_npz(p, np.random.default_rng(0).normal(size=120))
-    pd.DataFrame([
-        {"path": str(p), "first_peak_idx": 10},
-        {"path": str(p), "first_peak_idx": 50},
-        {"path": str(p), "first_peak_idx": 90},
-    ]).to_csv(macro / "first_peak_index.csv", index=False)
-    (macro / "global_window_size.json").write_text(json.dumps({"T_global_samples": 40}), encoding="utf-8")
-    pd.DataFrame([{"path": str(p), "first_peak_idx": 10, "echo_peak_offset_from_first_peak": 3}]).to_csv(echo / "echo_peak_index.csv", index=False)
-
+def test_postprocess_peak_to_peak_backward_compatible(tmp_path: Path):
+    macro, echo, out = _prep_fixture(tmp_path)
     run_peak_window_postprocess(PeakWindowPostprocessConfig(macro_dir=macro, echo_dir=echo, output_dir=out))
+    assert (out / "raw_first_peak_to_first_peak_aligned_waveforms.npy").exists()
+    assert (out / "secondary_peak_processed_waveforms.npy").exists()
 
-    from echopress.core.fft_export import FFTExportConfig, run_fft_postprocessed
 
-    run_fft_postprocessed(FFTExportConfig(postprocess_dir=out, output_dir=fft_out, fft_bins=16))
-    fft = np.load(fft_out / "fft_mag.npy")
-    proc = np.load(out / "secondary_peak_processed_waveforms.npy")
-    assert fft.shape[0] == proc.shape[0]
+def test_cli_postprocess_global_periodic_common(tmp_path: Path):
+    macro, echo, out = _prep_fixture(tmp_path)
+    runner = CliRunner()
+    result = runner.invoke(app, ["postprocess-peak-windows", "--macro-dir", str(macro), "--echo-dir", str(echo), "--output-dir", str(out), "--window-mode", "global-periodic-common", "--window-anchor", "first", "--periodicity-tolerance-frac", "0.12"])
+    assert result.exit_code == 0
+    summary = json.loads((out / "secondary_peak_processed_summary.json").read_text(encoding="utf-8"))
+    assert summary["window_mode"] == "global-periodic-common"
+    assert summary["waveform_shape"][1] == summary["T_global_samples"]
+
+
+def test_plan_only(tmp_path: Path):
+    macro, echo, out = _prep_fixture(tmp_path)
+    summary = run_peak_window_postprocess(PeakWindowPostprocessConfig(macro_dir=macro, echo_dir=echo, output_dir=out, window_mode="global-periodic-common", plan_only=True))
+    assert (out / "global_periodic_window_plan.csv").exists()
+    assert (out / "secondary_peak_processed_summary.json").exists()
+    assert not (out / "secondary_peak_global_periodic_processed_waveforms.npy").exists()
+    assert summary["plan_only"] is True

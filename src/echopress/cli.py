@@ -787,22 +787,45 @@ def postprocess_peak_windows(
     echo_dir: Path = typer.Option(..., "--echo-dir", dir_okay=True, file_okay=False, exists=True),
     output_dir: Path = typer.Option(..., "--output-dir", dir_okay=True, file_okay=False),
     config: Optional[Path] = typer.Option(None, "--config", dir_okay=False, file_okay=True),
+    channel: int = typer.Option(0, "--channel"),
     zero_first_pulse_us: float = typer.Option(2.0, "--zero-first-pulse-us"),
     peak_neighbor_us: float = typer.Option(0.0, "--peak-neighbor-us"),
     gain_clip_min: float = typer.Option(0.25, "--gain-clip-min"),
     gain_clip_max: float = typer.Option(4.0, "--gain-clip-max"),
     use_last_common_windows: bool = typer.Option(True, "--use-last-common-windows/--use-first-common-windows"),
+    window_mode: str = typer.Option("peak-to-peak", "--window-mode", help="Windowing mode: peak-to-peak | global-periodic-common"),
+    window_anchor: str = typer.Option("first", "--window-anchor", help="Anchor for global-periodic-common: first | last"),
+    use_registered_first_peaks: bool = typer.Option(False, "--use-registered-first-peaks/--no-use-registered-first-peaks"),
+    require_registered_first_peaks: bool = typer.Option(False, "--require-registered-first-peaks/--no-require-registered-first-peaks"),
+    periodicity_tolerance_frac: float = typer.Option(0.12, "--periodicity-tolerance-frac"),
+    max_common_windows: Optional[int] = typer.Option(None, "--max-common-windows"),
+    window_length_samples: Optional[int] = typer.Option(None, "--window-length-samples"),
+    plan_only: bool = typer.Option(False, "--plan-only/--write-waveforms"),
 ) -> None:
+    if window_mode not in {"peak-to-peak", "global-periodic-common"}:
+        raise typer.BadParameter("window_mode must be one of: peak-to-peak, global-periodic-common", param_hint="--window-mode")
+    if window_anchor not in {"first", "last"}:
+        raise typer.BadParameter("window_anchor must be one of: first, last", param_hint="--window-anchor")
+
     summary = run_peak_window_postprocess(PeakWindowPostprocessConfig(
         macro_dir=macro_dir,
         echo_dir=echo_dir,
         output_dir=output_dir,
         config=config,
+        channel=channel,
         zero_first_pulse_us=zero_first_pulse_us,
         peak_neighbor_us=peak_neighbor_us,
         gain_clip_min=gain_clip_min,
         gain_clip_max=gain_clip_max,
         use_last_common_windows=use_last_common_windows,
+        window_mode=window_mode,
+        window_anchor=window_anchor,
+        use_registered_first_peaks=use_registered_first_peaks,
+        require_registered_first_peaks=require_registered_first_peaks,
+        periodicity_tolerance_frac=periodicity_tolerance_frac,
+        max_common_windows=max_common_windows,
+        window_length_samples=window_length_samples,
+        plan_only=plan_only,
     ))
     typer.echo(json.dumps(summary, indent=2, default=float))
 
