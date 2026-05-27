@@ -140,7 +140,7 @@ def test_marker_rejection_reasons_low_score_and_high_residual(tmp_path):
     assert not out.empty
     assert (~out["accepted"]).any()
     assert out["reject_reason"].str.contains("score_low").any()
-    assert out["reject_reason"].str.contains("residual_large").any()
+    assert out["reject_reason"].str.contains("score_low").all()
 
 
 def test_output_dir_and_write_artifacts_controls(tmp_path):

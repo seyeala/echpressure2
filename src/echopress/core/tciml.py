@@ -90,7 +90,7 @@ def _ncc(signal: np.ndarray, template: np.ndarray) -> np.ndarray:
     w = template.size
     if signal.size < w:
         return np.asarray([], dtype=float)
-    conv = correlate(signal, t[::-1], mode="valid")
+    conv = correlate(signal, t, mode="valid")
     csum = np.concatenate(([0.0], np.cumsum(signal, dtype=float)))
     csum_sq = np.concatenate(([0.0], np.cumsum(np.square(signal, dtype=float), dtype=float)))
     seg_sum = csum[w:] - csum[:-w]
