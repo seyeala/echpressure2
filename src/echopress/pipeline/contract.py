@@ -1,28 +1,34 @@
 from __future__ import annotations
-
 from dataclasses import dataclass, field
-from typing import Dict, List
 
+@dataclass
+class ArtifactContract:
+    logical_name: str
+    relative_path_template: str | None
+    required: bool = True
+    kind: str = "file"
+    required_columns: list[str] = field(default_factory=list)
+    required_keys: list[str] = field(default_factory=list)
+    min_rows: int | None = None
+    allow_empty: bool = False
 
 @dataclass
 class StageContract:
     stage_name: str
-    inputs: List[str] = field(default_factory=list)
-    outputs: List[str] = field(default_factory=list)
-    success_checks: List[str] = field(default_factory=list)
-
+    depends_on: list[str] = field(default_factory=list)
+    inputs: list[str] = field(default_factory=list)
+    outputs: list[ArtifactContract] = field(default_factory=list)
+    success_checks: list[str] = field(default_factory=list)
+    config_keys: list[str] = field(default_factory=list)
+    stale_policy: str = "config_hash_or_missing_outputs"
 
 @dataclass
 class PipelineContract:
-    stages: Dict[str, StageContract]
+    stages: dict[str, StageContract]
 
-
-ALIGN_CONTRACT = PipelineContract(
-    stages={
-        "index": StageContract("index", ["dataset_root_exists"], ["index_json"], ["index_json_exists", "has_pstreams_ostreams"]),
-        "raw_align": StageContract("raw_align", ["dataset_root_exists", "index_json"], ["raw_align_json"], ["row_count_gt_zero", "required_columns"]),
-        "low_peak_filter": StageContract("low_peak_filter", ["raw_align_json", "dataset_root"], ["low_peak_remove_list"], ["output_exists"]),
-        "revise_align": StageContract("revise_align", ["raw_align_json", "low_peak_remove_list"], ["filtered_align_json"], ["row_count_gt_zero", "required_columns"]),
-        "clean_align": StageContract("clean_align", ["filtered_align_json_or_raw"], ["clean_align_json", "clean_align_summary_json", "active_align_json"], ["summary_output_exists", "row_count_gt_zero", "required_columns"]),
-    }
-)
+ALIGN_CONTRACT=StageContract(stage_name='align',outputs=[ArtifactContract('index_json','index.json'),ArtifactContract('clean_align_json','clean_align/align.clean.json')])
+MACRO_CONTRACT=StageContract(stage_name='macro',depends_on=['align'],outputs=[ArtifactContract('macro_window_table_csv','{macro_dir}/macro_window_table.csv',kind='csv')])
+ECHO_CONTRACT=StageContract(stage_name='echo',depends_on=['macro'],outputs=[ArtifactContract('echo_peak_index_csv','{echo_dir}/echo_peak_index.csv',kind='csv')])
+POSTPROCESS_CONTRACT=StageContract(stage_name='postprocess',depends_on=['macro','echo'],outputs=[ArtifactContract('secondary_peak_processed_manifest_csv','{postprocess_dir}/secondary_peak_processed_manifest.csv',kind='csv')])
+FFT_CONTRACT=StageContract(stage_name='fft',depends_on=['postprocess'],outputs=[ArtifactContract('fft_mag_npy','{fft_dir}/fft_mag.npy',kind='npy')])
+PIPELINE_CONTRACT=PipelineContract(stages={s.stage_name:s for s in [ALIGN_CONTRACT,MACRO_CONTRACT,ECHO_CONTRACT,POSTPROCESS_CONTRACT,FFT_CONTRACT]})

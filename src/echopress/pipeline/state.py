@@ -43,6 +43,7 @@ class PipelineArtifact:
     path: str
     relative_path: Optional[str]
     exists: bool
+    artifact_scope: str
     status: ArtifactStatus
     size_bytes: Optional[int] = None
     mtime: Optional[float] = None
@@ -196,14 +197,16 @@ def build_artifact(out_dir: Path, logical_name: str, path: Path, producer_stage:
     exists = path.exists()
     st = path.stat() if exists else None
     resolved_out = out_dir.resolve()
-    resolved_path = path.resolve() if exists else path
-    relative_path: Optional[str]
-    if exists and resolved_path.is_relative_to(resolved_out):
-        relative_path = str(resolved_path.relative_to(resolved_out))
-    elif exists:
+    resolved_path = path.resolve()
+    relative_path: Optional[str] = None
+    artifact_scope = "external"
+    try:
+        rel = resolved_path.relative_to(resolved_out)
+        relative_path = str(rel)
+        artifact_scope = "pipeline"
+    except Exception:
         relative_path = None
-    else:
-        relative_path = str(path)
+        artifact_scope = "external"
     return PipelineArtifact(
         logical_name=logical_name,
         path=str(resolved_path),
@@ -212,8 +215,9 @@ def build_artifact(out_dir: Path, logical_name: str, path: Path, producer_stage:
         status='ok' if exists and status == 'ok' else ('missing' if not exists else status),
         size_bytes=st.st_size if st else None,
         mtime=st.st_mtime if st else None,
-        sha256=_hash_file(path) if exists and st and st.st_size < 50_000_000 else None,
+        sha256=_hash_file(path) if exists and path.is_file() and st and st.st_size < 50_000_000 else None,
         producer_stage=producer_stage,
+        artifact_scope=artifact_scope,
         row_count=row_count,
         required_columns=required_columns,
         actual_columns=actual_columns,
