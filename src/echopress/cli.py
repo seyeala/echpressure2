@@ -841,8 +841,11 @@ def fft_postprocessed(
     output_dir: Path = typer.Option(..., "--output-dir", dir_okay=True, file_okay=False),
     config: Optional[Path] = typer.Option(None, "--config", dir_okay=False, file_okay=True),
     fft_bins: Optional[int] = typer.Option(256, "--fft-bins"),
+    fft_mode: str = typer.Option("full", "--fft-mode"),
+    n_fft: Optional[int] = typer.Option(None, "--n-fft"),
+    output_bins: Optional[int] = typer.Option(None, "--output-bins"),
 ) -> None:
-    summary = run_fft_postprocessed(FFTExportConfig(postprocess_dir=postprocess_dir, output_dir=output_dir, config=config, fft_bins=fft_bins))
+    summary = run_fft_postprocessed(FFTExportConfig(postprocess_dir=postprocess_dir, output_dir=output_dir, config=config, fft_bins=fft_bins, fft_mode=fft_mode, n_fft=n_fft, output_bins=output_bins))
     typer.echo(json.dumps(summary, indent=2, default=float))
 
 

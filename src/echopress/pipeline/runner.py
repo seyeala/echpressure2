@@ -264,12 +264,12 @@ def run_prepare_postprocess(dataset_root: Path,out_dir: Path,macro_dir: Optional
     save_pipeline_state(state)
     return _stage_result('postprocess',state,{"postprocess_dir":str(post_dir)})
 
-def run_prepare_fft(dataset_root: Path,out_dir: Path,postprocess_dir: Optional[Path]=None,fft_bins:int=1024,mode:str='auto',force:bool=False,**kwargs)->dict[str,object]:
+def run_prepare_fft(dataset_root: Path,out_dir: Path,postprocess_dir: Optional[Path]=None,fft_bins:int=1024,mode:str='auto',force:bool=False,fft_mode:str='full',n_fft:Optional[int]=None,output_bins:Optional[int]=None,**kwargs)->dict[str,object]:
     state=_state_or_new(dataset_root,out_dir)
     if postprocess_dir is None: postprocess_dir=Path(state.active_artifacts['active_postprocess_dir'].path)
     fft_dir=postprocess_dir/'fft_outputs'
     if force or not (fft_dir/'fft_mag.npy').exists():
-        run_fft_postprocessed(FFTExportConfig(postprocess_dir=postprocess_dir,output_dir=fft_dir,fft_bins=fft_bins))
+        run_fft_postprocessed(FFTExportConfig(postprocess_dir=postprocess_dir,output_dir=fft_dir,fft_bins=fft_bins,fft_mode=fft_mode,n_fft=n_fft,output_bins=output_bins))
     state.active_artifacts['active_fft_dir']=build_artifact(out_dir,'active_fft_dir',fft_dir,'fft')
     state.artifacts['fft_mag_npy']=build_artifact(out_dir,'fft_mag_npy',fft_dir/'fft_mag.npy','fft')
     state.stages['fft']=PipelineStageRecord(stage_name='fft',status='success')
@@ -285,6 +285,6 @@ def run_pipeline_full(dataset_root: Path,out_dir: Path,stages: list[str],**kwarg
         elif s=='macro': results[s]=run_prepare_macro(dataset_root,out_dir,run_mode=kwargs.get('run_mode','smoke'),smoke_max_files=kwargs.get('smoke_max_files',5),mode=kwargs.get('mode','auto'),force=kwargs.get('force',False))
         elif s=='echo': results[s]=run_prepare_echo(dataset_root,out_dir,mode=kwargs.get('mode','auto'),force=kwargs.get('force',False))
         elif s=='postprocess': results[s]=run_prepare_postprocess(dataset_root,out_dir,mode=kwargs.get('mode','auto'),force=kwargs.get('force',False))
-        elif s=='fft': results[s]=run_prepare_fft(dataset_root,out_dir,fft_bins=kwargs.get('fft_bins',1024),mode=kwargs.get('mode','auto'),force=kwargs.get('force',False))
+        elif s=='fft': results[s]=run_prepare_fft(dataset_root,out_dir,fft_bins=kwargs.get('fft_bins',1024),mode=kwargs.get('mode','auto'),force=kwargs.get('force',False),fft_mode=kwargs.get('fft_mode','full'),n_fft=kwargs.get('n_fft'),output_bins=kwargs.get('output_bins'))
     st=load_pipeline_state(out_dir)
     return {"status":"ready","can_continue":True,"state_path":str(state_path_for(out_dir)),"selected_stages":selected,"stages":results,"active_artifacts":{k:v.path for k,v in (st.active_artifacts.items() if st else [])}}
