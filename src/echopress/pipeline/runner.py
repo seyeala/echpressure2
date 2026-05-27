@@ -6,10 +6,14 @@ from pathlib import Path
 from time import perf_counter
 from typing import Dict, Optional
 
+import numpy as np
+
 from echopress.core.align_cleaner import AlignCleanerConfig, run_align_clean
 from echopress.core.alignment_edit import revise_alignment_by_remove_list
 from echopress.core.amplitude_filter import build_low_peak_remove_list
-from echopress.ingest import DatasetIndexer
+from echopress.core.mapping import align_streams
+from echopress.core.tables import File2PressureMap, OscFiles, Signals, export_tables
+from echopress.ingest import DatasetIndexer, load_ostream, read_pstream
 
 from .state import PipelineFailure, PipelineStageRecord, build_artifact, load_pipeline_state, new_state, save_pipeline_state
 from .validate import count_npz, validate_align_json, validate_index_json
@@ -81,7 +85,53 @@ def run_prepare_align(dataset_root: Path, out_dir: Path, channel: int, baseline_
 
     raw_align = out_dir / 'align.json'
     if force or not raw_align.exists():
-        raise PipelineError('raw align not found; run `python -m echopress.cli align --dataset-root ... --export <out_dir>/align.json` first')
+        t0 = perf_counter(); rec = PipelineStageRecord(stage_name='align', status='running', started_at=state.updated_at); _record_stage(state, rec)
+        indexer = DatasetIndexer(dataset_root)
+        sessions = indexer.sessions()
+        index_data = {
+            'pstreams': {sid: [str(p) for p in indexer.get_pstreams(sid, fallback=False)] for sid in sessions},
+            'ostreams': {sid: [str(o) for o in indexer.get_ostreams(sid, fallback=False)] for sid in sessions},
+        }
+        all_pstreams = [p for paths in index_data.get('pstreams', {}).values() for p in paths]
+        signals = Signals(); osc_files = OscFiles(); fmap = File2PressureMap()
+        for session, o_paths in sorted(index_data.get('ostreams', {}).items()):
+            p_paths = index_data.get('pstreams', {}).get(session, []) or all_pstreams
+            if not o_paths or not p_paths:
+                continue
+            o_path = Path(o_paths[0])
+            if o_path.name in {'align.json', 'index.json'}:
+                continue
+            p_path = Path(p_paths[0])
+            try:
+                ostream = load_ostream(o_path)
+                pstream = list(read_pstream(p_path))
+                result = align_streams(ostream, pstream)
+            except Exception as exc:
+                msg = f'Failed to align session {session} (O-stream: {o_path}, P-stream: {p_path}): {exc}'
+                rec.status = 'failed'; rec.error_message = msg; rec.duration_seconds = perf_counter() - t0; _record_stage(state, rec)
+                if debug:
+                    raise PipelineError(msg) from exc
+                continue
+
+            sid = ostream.session_id
+            file_stamp = o_path.stem
+            data = np.asarray(ostream.channels)
+            if data.ndim == 2:
+                data = data[:, 0] if data.shape[1] > 0 else np.array([])
+            data = np.asarray(data).reshape(-1)
+            if data.size == 0:
+                osc_files.add(sid, file_stamp, 0, str(o_path))
+            else:
+                for idx, value in enumerate(data):
+                    signals.add(sid, file_stamp, idx, float(value))
+                    osc_files.add(sid, file_stamp, idx, str(o_path))
+            if result.mapping >= 0:
+                pressure_value = pstream[result.mapping].pressure
+                fmap.add(sid, file_stamp, pressure_value, alignment_error=result.E_align)
+
+        tables = export_tables(signals, osc_files, fmap, tall=True)
+        raw_align.write_text(json.dumps(tables, default=float), encoding='utf-8')
+        rec.status='success'; rec.outputs={'raw_align_json': str(raw_align)}; rec.duration_seconds=perf_counter()-t0; _record_stage(state, rec)
     ok, meta = validate_align_json(raw_align)
     if not ok:
         raise PipelineError(f'raw align invalid: {meta}')
