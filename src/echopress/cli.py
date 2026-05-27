@@ -34,7 +34,7 @@ from .ml.evaluate import PressureEvalConfig, run_evaluate
 from .config import Settings, load_settings
 from .ingest import DatasetIndexer, load_ostream, read_pstream
 from ._typer import bad_parameter
-from .pipeline.runner import PipelineError, resolve_active_align, run_prepare_align, summarize_pipeline_state
+from .pipeline.runner import PipelineError, resolve_active_align, run_prepare_align, summarize_pipeline_state, run_prepare_macro, run_prepare_echo, run_prepare_postprocess, run_prepare_fft, run_pipeline_full
 
 app = typer.Typer(help="Utilities for the echopress project")
 logger = logging.getLogger(__name__)
@@ -1257,18 +1257,45 @@ def pipeline_doctor(
     typer.echo(json.dumps({"status": "ok" if not issues else "issues", "issues": issues}, indent=2))
 
 
+
+@app.command("prepare-macro")
+def prepare_macro(dataset_root: Path = typer.Option(..., "--dataset-root"), out_dir: Path = typer.Option(..., "--out-dir"), run_mode: str = typer.Option("smoke", "--run-mode"), smoke_max_files: Optional[int] = typer.Option(5, "--smoke-max-files"), mode: str = typer.Option("auto", "--mode"), as_json: bool = typer.Option(False, "--json")) -> None:
+    r=run_prepare_macro(dataset_root=dataset_root,out_dir=out_dir,run_mode=run_mode,smoke_max_files=smoke_max_files,mode=mode)
+    typer.echo(json.dumps(r, indent=2 if not as_json else None))
+
+@app.command("prepare-echo")
+def prepare_echo(dataset_root: Path = typer.Option(..., "--dataset-root"), out_dir: Path = typer.Option(..., "--out-dir"), mode: str = typer.Option("auto", "--mode"), as_json: bool = typer.Option(False, "--json")) -> None:
+    r=run_prepare_echo(dataset_root=dataset_root,out_dir=out_dir,mode=mode)
+    typer.echo(json.dumps(r, indent=2 if not as_json else None))
+
+@app.command("prepare-postprocess")
+def prepare_postprocess(dataset_root: Path = typer.Option(..., "--dataset-root"), out_dir: Path = typer.Option(..., "--out-dir"), mode: str = typer.Option("auto", "--mode"), as_json: bool = typer.Option(False, "--json")) -> None:
+    r=run_prepare_postprocess(dataset_root=dataset_root,out_dir=out_dir,mode=mode)
+    typer.echo(json.dumps(r, indent=2 if not as_json else None))
+
+@app.command("prepare-fft")
+def prepare_fft(dataset_root: Path = typer.Option(..., "--dataset-root"), out_dir: Path = typer.Option(..., "--out-dir"), mode: str = typer.Option("auto", "--mode"), fft_bins: int = typer.Option(1024, "--fft-bins"), as_json: bool = typer.Option(False, "--json")) -> None:
+    r=run_prepare_fft(dataset_root=dataset_root,out_dir=out_dir,mode=mode,fft_bins=fft_bins)
+    typer.echo(json.dumps(r, indent=2 if not as_json else None))
+
 @app.command("run-pipeline")
 def run_pipeline(
     dataset_root: Path = typer.Option(..., "--dataset-root", file_okay=False, dir_okay=True),
     out_dir: Path = typer.Option(..., "--out-dir", file_okay=False, dir_okay=True),
     stages: str = typer.Option("align,macro,echo,postprocess,fft", "--stages"),
-    smoke_max_files: Optional[int] = typer.Option(None, "--smoke-max-files"),
+    run_mode: str = typer.Option("smoke", "--run-mode"),
+    smoke_max_files: Optional[int] = typer.Option(5, "--smoke-max-files"),
+    mode: str = typer.Option("auto", "--mode"),
+    fft_bins: int = typer.Option(1024, "--fft-bins"),
+    as_json: bool = typer.Option(False, "--json"),
 ) -> None:
     selected = [s.strip() for s in stages.split(',') if s.strip()]
-    result = {"selected_stages": selected}
-    if 'align' in selected:
-        result['align'] = run_prepare_align(dataset_root=dataset_root, out_dir=out_dir, channel=0, baseline_samples=10000, threshold_multiplier=50.0, alignment_error_max=1.0, mode='auto')
-    typer.echo(json.dumps(result, indent=2))
+    try:
+        result = run_pipeline_full(dataset_root=dataset_root, out_dir=out_dir, stages=selected, run_mode=run_mode, smoke_max_files=smoke_max_files, mode=mode, fft_bins=fft_bins)
+        typer.echo(json.dumps(result, indent=2 if not as_json else None))
+    except PipelineError as exc:
+        typer.echo(json.dumps({"status":"blocked","can_continue":False,"error_message":str(exc)}))
+        raise typer.Exit(code=1)
 
 def main() -> None:
     """Execute the Typer application."""

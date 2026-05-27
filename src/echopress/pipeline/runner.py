@@ -9,13 +9,17 @@ from typing import Dict, Optional
 import numpy as np
 
 from echopress.core.align_cleaner import AlignCleanerConfig, run_align_clean
+from echopress.core.macro_detector import MacroDetectorConfig, run_macro_detection
+from echopress.core.echo_peaks import EchoPeakConfig, run_echo_peak_detection
+from echopress.core.peak_window_postprocess import PeakWindowPostprocessConfig, run_peak_window_postprocess
+from echopress.core.fft_export import FFTExportConfig, run_fft_postprocessed
 from echopress.core.alignment_edit import revise_alignment_by_remove_list
 from echopress.core.amplitude_filter import build_low_peak_remove_list
 from echopress.core.mapping import align_streams
 from echopress.core.tables import File2PressureMap, OscFiles, Signals, export_tables
 from echopress.ingest import DatasetIndexer, load_ostream, read_pstream
 
-from .state import PipelineFailure, PipelineStageRecord, build_artifact, load_pipeline_state, new_state, save_pipeline_state
+from .state import PipelineFailure, PipelineStageRecord, build_artifact, load_pipeline_state, new_state, save_pipeline_state, state_path_for
 from .validate import count_npz, validate_align_json, validate_index_json
 
 
@@ -194,3 +198,93 @@ def summarize_pipeline_state(out_dir: Path) -> Dict[str, object]:
             missing.append(k)
     active = state.active_artifacts.get('active_align_json')
     return {'status': 'ready' if not missing else 'blocked', 'active_align_path': active.path if active else None, 'stages': {k: s.status for k, s in state.stages.items()}, 'artifacts': artifacts, 'missing_artifacts': missing}
+
+
+def _state_or_new(dataset_root: Path, out_dir: Path):
+    out_dir.mkdir(parents=True, exist_ok=True)
+    return load_pipeline_state(out_dir) or new_state(dataset_root, out_dir)
+
+def _stage_result(stage: str, state, d: dict):
+    return {"status":"ready","can_continue":True,"stage":stage,"state_path":str((Path(state.out_dir)/'.echopress'/'pipeline_state.json')), **d}
+
+def run_prepare_macro(dataset_root: Path,out_dir: Path,align_table: Optional[Path]=None,run_mode: str='smoke',smoke_max_files: Optional[int]=5,channel:int=0,k_min:int=2,k_max:int=5,force_k: Optional[int]=None,block_size:int=10000,first_peak_search_frac:float=0.40,raw_max_abs_min:float=100.0,alignment_error_max:float=1.0,backward_full_windows: bool=True,progress_every:int=25,mode:str='auto',force:bool=False,debug:bool=False)->dict[str,object]:
+    state=_state_or_new(dataset_root,out_dir)
+    active=resolve_active_align(out_dir,dataset_root)
+    if align_table is None:
+        if active.get('status')!='ok':
+            raise PipelineError('macro requires active align')
+        align_table=Path(active['active_align_path'])
+    macro_dir=out_dir / (f'macro_windows_SMOKE{smoke_max_files}' if run_mode=='smoke' else 'macro_windows_FULL')
+    expected=[macro_dir/'macro_window_table.csv',macro_dir/'first_peak_index.csv',macro_dir/'global_window_size.json',macro_dir/'peak_to_peak_window_index.csv']
+    exists=all(p.exists() for p in expected)
+    reran=False; reused=False
+    if mode in {'auto','resume','read-only'} and exists and not force:
+        reused=True
+    elif mode=='read-only' and not exists:
+        raise PipelineError('macro artifacts missing in read-only mode')
+    else:
+        run_macro_detection(MacroDetectorConfig(dataset_root=dataset_root,align_table=align_table,output_dir=macro_dir,channel=channel,k_min=k_min,k_max=k_max,force_k=force_k,max_files=smoke_max_files if run_mode=='smoke' else None,block_size=block_size,first_peak_search_frac=first_peak_search_frac,raw_max_abs_min=raw_max_abs_min,max_alignment_error_s=alignment_error_max,backward_full_windows=backward_full_windows,progress_every=progress_every))
+        reran=True
+    state.artifacts['macro_window_table_csv']=build_artifact(out_dir,'macro_window_table_csv',macro_dir/'macro_window_table.csv','macro')
+    state.artifacts['first_peak_index_csv']=build_artifact(out_dir,'first_peak_index_csv',macro_dir/'first_peak_index.csv','macro')
+    state.artifacts['global_window_size_json']=build_artifact(out_dir,'global_window_size_json',macro_dir/'global_window_size.json','macro')
+    state.artifacts['peak_to_peak_window_index_csv']=build_artifact(out_dir,'peak_to_peak_window_index_csv',macro_dir/'peak_to_peak_window_index.csv','macro')
+    state.active_artifacts['active_macro_dir']=build_artifact(out_dir,'active_macro_dir',macro_dir,'macro')
+    state.stages['macro']=PipelineStageRecord(stage_name='macro',status='success')
+    save_pipeline_state(state)
+    return _stage_result('macro',state,{"macro_dir":str(macro_dir),"active_artifacts":{k:v.path for k,v in state.active_artifacts.items()},"reused":reused,"reran":reran})
+
+def run_prepare_echo(dataset_root: Path,out_dir: Path,detection_dir: Optional[Path]=None,mode:str='auto',force:bool=False,**kwargs)->dict[str,object]:
+    state=_state_or_new(dataset_root,out_dir)
+    if detection_dir is None:
+        a=state.active_artifacts.get('active_macro_dir')
+        if not a: raise PipelineError('echo requires active macro dir')
+        detection_dir=Path(a.path)
+    echo_dir=detection_dir/'echo_peaks_aggressive'
+    if force or not (echo_dir/'echo_peak_index.csv').exists() or mode not in {'read-only','auto','resume'}:
+        pass
+    if not (echo_dir/'echo_peak_index.csv').exists() or force:
+        run_echo_peak_detection(EchoPeakConfig(detection_dir=detection_dir,output_dir=echo_dir))
+    state.artifacts['echo_peak_index_csv']=build_artifact(out_dir,'echo_peak_index_csv',echo_dir/'echo_peak_index.csv','echo')
+    state.active_artifacts['active_echo_dir']=build_artifact(out_dir,'active_echo_dir',echo_dir,'echo')
+    state.stages['echo']=PipelineStageRecord(stage_name='echo',status='success')
+    save_pipeline_state(state)
+    return _stage_result('echo',state,{"echo_dir":str(echo_dir)})
+
+def run_prepare_postprocess(dataset_root: Path,out_dir: Path,macro_dir: Optional[Path]=None,echo_dir: Optional[Path]=None,mode:str='auto',force:bool=False,**kwargs)->dict[str,object]:
+    state=_state_or_new(dataset_root,out_dir)
+    if macro_dir is None: macro_dir=Path(state.active_artifacts['active_macro_dir'].path)
+    if echo_dir is None: echo_dir=Path(state.active_artifacts['active_echo_dir'].path)
+    post_dir=macro_dir/'post_peak_windows'
+    if force or not (post_dir/'secondary_peak_processed_manifest.csv').exists():
+        run_peak_window_postprocess(PeakWindowPostprocessConfig(macro_dir=macro_dir,echo_dir=echo_dir,output_dir=post_dir))
+    state.active_artifacts['active_postprocess_dir']=build_artifact(out_dir,'active_postprocess_dir',post_dir,'postprocess')
+    state.artifacts['secondary_peak_processed_manifest_csv']=build_artifact(out_dir,'secondary_peak_processed_manifest_csv',post_dir/'secondary_peak_processed_manifest.csv','postprocess')
+    state.stages['postprocess']=PipelineStageRecord(stage_name='postprocess',status='success')
+    save_pipeline_state(state)
+    return _stage_result('postprocess',state,{"postprocess_dir":str(post_dir)})
+
+def run_prepare_fft(dataset_root: Path,out_dir: Path,postprocess_dir: Optional[Path]=None,fft_bins:int=1024,mode:str='auto',force:bool=False,**kwargs)->dict[str,object]:
+    state=_state_or_new(dataset_root,out_dir)
+    if postprocess_dir is None: postprocess_dir=Path(state.active_artifacts['active_postprocess_dir'].path)
+    fft_dir=postprocess_dir/'fft_outputs'
+    if force or not (fft_dir/'fft_mag.npy').exists():
+        run_fft_postprocessed(FFTExportConfig(postprocess_dir=postprocess_dir,output_dir=fft_dir,fft_bins=fft_bins))
+    state.active_artifacts['active_fft_dir']=build_artifact(out_dir,'active_fft_dir',fft_dir,'fft')
+    state.artifacts['fft_mag_npy']=build_artifact(out_dir,'fft_mag_npy',fft_dir/'fft_mag.npy','fft')
+    state.stages['fft']=PipelineStageRecord(stage_name='fft',status='success')
+    save_pipeline_state(state)
+    return _stage_result('fft',state,{"fft_dir":str(fft_dir)})
+
+def run_pipeline_full(dataset_root: Path,out_dir: Path,stages: list[str],**kwargs)->dict[str,object]:
+    order=['align','macro','echo','postprocess','fft']
+    selected=[s for s in order if s in stages]
+    results={}
+    for s in selected:
+        if s=='align': results[s]=run_prepare_align(dataset_root,out_dir,channel=kwargs.get('channel',0),baseline_samples=kwargs.get('baseline_samples',10000),threshold_multiplier=kwargs.get('threshold_multiplier',50.0),alignment_error_max=kwargs.get('alignment_error_max',1.0),mode=kwargs.get('mode','auto'),force=kwargs.get('force',False))
+        elif s=='macro': results[s]=run_prepare_macro(dataset_root,out_dir,run_mode=kwargs.get('run_mode','smoke'),smoke_max_files=kwargs.get('smoke_max_files',5),mode=kwargs.get('mode','auto'),force=kwargs.get('force',False))
+        elif s=='echo': results[s]=run_prepare_echo(dataset_root,out_dir,mode=kwargs.get('mode','auto'),force=kwargs.get('force',False))
+        elif s=='postprocess': results[s]=run_prepare_postprocess(dataset_root,out_dir,mode=kwargs.get('mode','auto'),force=kwargs.get('force',False))
+        elif s=='fft': results[s]=run_prepare_fft(dataset_root,out_dir,fft_bins=kwargs.get('fft_bins',1024),mode=kwargs.get('mode','auto'),force=kwargs.get('force',False))
+    st=load_pipeline_state(out_dir)
+    return {"status":"ready","can_continue":True,"state_path":str(state_path_for(out_dir)),"selected_stages":selected,"stages":results,"active_artifacts":{k:v.path for k,v in (st.active_artifacts.items() if st else [])}}
