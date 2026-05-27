@@ -782,12 +782,27 @@ def clean_align(
 
 @app.command("postprocess-peak-windows")
 def postprocess_peak_windows(
+    macro_dir: Path = typer.Option(..., "--macro-dir", dir_okay=True, file_okay=False, exists=True),
     echo_dir: Path = typer.Option(..., "--echo-dir", dir_okay=True, file_okay=False, exists=True),
     output_dir: Path = typer.Option(..., "--output-dir", dir_okay=True, file_okay=False),
     config: Optional[Path] = typer.Option(None, "--config", dir_okay=False, file_okay=True),
-    max_echo_peak_order: Optional[int] = typer.Option(3, "--max-echo-peak-order"),
+    zero_first_pulse_us: float = typer.Option(2.0, "--zero-first-pulse-us"),
+    peak_neighbor_us: float = typer.Option(0.0, "--peak-neighbor-us"),
+    gain_clip_min: float = typer.Option(0.25, "--gain-clip-min"),
+    gain_clip_max: float = typer.Option(4.0, "--gain-clip-max"),
+    use_last_common_windows: bool = typer.Option(True, "--use-last-common-windows/--use-first-common-windows"),
 ) -> None:
-    summary = run_peak_window_postprocess(PeakWindowPostprocessConfig(echo_dir=echo_dir, output_dir=output_dir, config=config, max_echo_peak_order=max_echo_peak_order))
+    summary = run_peak_window_postprocess(PeakWindowPostprocessConfig(
+        macro_dir=macro_dir,
+        echo_dir=echo_dir,
+        output_dir=output_dir,
+        config=config,
+        zero_first_pulse_us=zero_first_pulse_us,
+        peak_neighbor_us=peak_neighbor_us,
+        gain_clip_min=gain_clip_min,
+        gain_clip_max=gain_clip_max,
+        use_last_common_windows=use_last_common_windows,
+    ))
     typer.echo(json.dumps(summary, indent=2, default=float))
 
 
