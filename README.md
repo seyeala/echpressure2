@@ -269,3 +269,20 @@ environment variables before running DVC commands:
 * `AWS_ACCESS_KEY_ID`
 * `AWS_SECRET_ACCESS_KEY`
 * `AWS_DEFAULT_REGION`
+
+## Pipeline contract and execution tracking
+
+echopress now maintains a restart-safe pipeline ledger at:
+
+- `<out_dir>/.echopress/pipeline_state.json` (canonical)
+
+Use repo-owned orchestration commands instead of notebook path guessing:
+
+```bash
+python -m echopress.cli prepare-align --dataset-root /content/5Msagenerated --out-dir /content/drive/MyDrive/echpressure2_outputs/5Msagenerated --mode auto --json
+python -m echopress.cli pipeline-status --out-dir /content/drive/MyDrive/echpressure2_outputs/5Msagenerated --json
+```
+
+The contract defines expected stage inputs/outputs/checks. The state ledger records what ran, what failed, produced artifacts, and the currently active alignment artifact (`active_align_path`).
+
+Notebooks should call `prepare-align`/`pipeline-bootstrap` and consume returned JSON. Do not hardcode `align.json`, `align.filtered.json`, `align.cleaned.json`, or `align.clean.json` paths.

@@ -34,6 +34,7 @@ from .ml.evaluate import PressureEvalConfig, run_evaluate
 from .config import Settings, load_settings
 from .ingest import DatasetIndexer, load_ostream, read_pstream
 from ._typer import bad_parameter
+from .pipeline.runner import PipelineError, resolve_active_align, run_prepare_align, summarize_pipeline_state
 
 app = typer.Typer(help="Utilities for the echopress project")
 logger = logging.getLogger(__name__)
@@ -1188,6 +1189,86 @@ def viz(ctx: typer.Context, signal: str) -> None:
         typer.echo("matplotlib not available, printing summary statistics")
         typer.echo(f"mean={float(np.mean(data)):.3f} std={float(np.std(data)):.3f}")
 
+
+
+@app.command("prepare-align")
+def prepare_align(
+    dataset_root: Path = typer.Option(..., "--dataset-root", file_okay=False, dir_okay=True),
+    out_dir: Path = typer.Option(..., "--out-dir", file_okay=False, dir_okay=True),
+    channel: int = typer.Option(0, "--channel"),
+    baseline_samples: int = typer.Option(10000, "--baseline-samples"),
+    threshold_multiplier: float = typer.Option(50.0, "--threshold-multiplier"),
+    alignment_error_max: float = typer.Option(1.0, "--alignment-error-max"),
+    mode: str = typer.Option("auto", "--mode"),
+    force: bool = typer.Option(False, "--force/--no-force"),
+    as_json: bool = typer.Option(False, "--json"),
+) -> None:
+    try:
+        result = run_prepare_align(dataset_root=dataset_root, out_dir=out_dir, channel=channel, baseline_samples=baseline_samples, threshold_multiplier=threshold_multiplier, alignment_error_max=alignment_error_max, mode=mode, force=force)
+        typer.echo(json.dumps(result, indent=2 if not as_json else None))
+    except PipelineError as exc:
+        typer.echo(json.dumps({"status": "blocked", "can_continue": False, "error_message": str(exc), "next_action": "Fix reported issue then rerun prepare-align --mode resume"}))
+        raise typer.Exit(code=1)
+
+
+@app.command("pipeline-bootstrap")
+def pipeline_bootstrap(
+    dataset_root: Path = typer.Option(..., "--dataset-root", file_okay=False, dir_okay=True),
+    out_dir: Path = typer.Option(..., "--out-dir", file_okay=False, dir_okay=True),
+    mode: str = typer.Option("auto", "--mode"),
+    as_json: bool = typer.Option(False, "--json"),
+) -> None:
+    result = run_prepare_align(dataset_root=dataset_root, out_dir=out_dir, channel=0, baseline_samples=10000, threshold_multiplier=50.0, alignment_error_max=1.0, mode=mode, force=(mode=="force"))
+    typer.echo(json.dumps(result, indent=2 if not as_json else None))
+
+
+@app.command("pipeline-status")
+def pipeline_status(
+    out_dir: Path = typer.Option(..., "--out-dir", file_okay=False, dir_okay=True),
+    as_json: bool = typer.Option(False, "--json"),
+    allow_incomplete: bool = typer.Option(False, "--allow-incomplete"),
+) -> None:
+    result = summarize_pipeline_state(out_dir)
+    typer.echo(json.dumps(result, indent=2 if not as_json else None))
+    if result.get('status') != 'ready' and not allow_incomplete:
+        raise typer.Exit(code=1)
+
+
+@app.command("pipeline-doctor")
+def pipeline_doctor(
+    dataset_root: Path = typer.Option(..., "--dataset-root", file_okay=False, dir_okay=True),
+    out_dir: Path = typer.Option(..., "--out-dir", file_okay=False, dir_okay=True),
+) -> None:
+    issues=[]
+    if not dataset_root.exists():
+        issues.append({"issue":"dataset path missing","fix":"Set --dataset-root to existing dataset path"})
+    if str(dataset_root).startswith('\\content'):
+        issues.append({"issue":"Windows-style \\content path in Colab-like env","fix":"Use /content/..."})
+    if os.name == 'nt' and str(dataset_root).startswith('/content'):
+        issues.append({"issue":"/content path on Windows","fix":"Use local drive path like D:/..."})
+    if not out_dir.exists():
+        issues.append({"issue":"out_dir does not exist","fix":"Run prepare-align to create outputs"})
+    status = summarize_pipeline_state(out_dir)
+    if status.get('status') == 'missing':
+        issues.append({"issue":"out_dir has no pipeline_state.json","fix":"Run prepare-align --mode repair-state or --mode auto"})
+    active = resolve_active_align(out_dir, dataset_root)
+    if active.get('status') != 'ok':
+        issues.append({"issue":"no valid alignment artifact","fix":"Run prepare-align --mode resume"})
+    typer.echo(json.dumps({"status": "ok" if not issues else "issues", "issues": issues}, indent=2))
+
+
+@app.command("run-pipeline")
+def run_pipeline(
+    dataset_root: Path = typer.Option(..., "--dataset-root", file_okay=False, dir_okay=True),
+    out_dir: Path = typer.Option(..., "--out-dir", file_okay=False, dir_okay=True),
+    stages: str = typer.Option("align,macro,echo,postprocess,fft", "--stages"),
+    smoke_max_files: Optional[int] = typer.Option(None, "--smoke-max-files"),
+) -> None:
+    selected = [s.strip() for s in stages.split(',') if s.strip()]
+    result = {"selected_stages": selected}
+    if 'align' in selected:
+        result['align'] = run_prepare_align(dataset_root=dataset_root, out_dir=out_dir, channel=0, baseline_samples=10000, threshold_multiplier=50.0, alignment_error_max=1.0, mode='auto')
+    typer.echo(json.dumps(result, indent=2))
 
 def main() -> None:
     """Execute the Typer application."""
