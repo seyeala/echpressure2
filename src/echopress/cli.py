@@ -35,6 +35,7 @@ from .config import Settings, load_settings
 from .ingest import DatasetIndexer, load_ostream, read_pstream
 from ._typer import bad_parameter
 from .pipeline.runner import PipelineError, resolve_active_align, run_prepare_align, summarize_pipeline_state, run_prepare_macro, run_prepare_echo, run_prepare_postprocess, run_prepare_fft, run_pipeline_full
+from .pipeline.state import PipelineStateMigrationError
 
 app = typer.Typer(help="Utilities for the echopress project")
 logger = logging.getLogger(__name__)
@@ -1231,6 +1232,10 @@ def prepare_align(
         typer.echo(json.dumps(result, indent=2 if not as_json else None))
     except PipelineError as exc:
         typer.echo(json.dumps({"status": "blocked", "can_continue": False, "error_message": str(exc), "next_action": "Fix reported issue then rerun prepare-align --mode resume"}))
+        raise typer.Exit(code=1)
+    except PipelineStateMigrationError as exc:
+        payload = {"status": "blocked", "can_continue": False, "failed_stage": "load_pipeline_state", "error_message": str(exc), "next_action": "Run pipeline repair-state or move old pipeline_state.json aside"}
+        typer.echo(json.dumps(payload))
         raise typer.Exit(code=1)
 
 
