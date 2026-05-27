@@ -96,6 +96,33 @@ def test_cli_postprocess_global_periodic_common(tmp_path: Path):
     assert summary["waveform_shape"][1] == summary["T_global_samples"]
 
 
+def test_postprocess_global_periodic_continuous_train_shape(tmp_path: Path):
+    macro, echo, out = _prep_fixture(tmp_path)
+    summary = run_peak_window_postprocess(PeakWindowPostprocessConfig(
+        macro_dir=macro, echo_dir=echo, output_dir=out, window_mode="global-periodic-common", window_output_layout="continuous-train"
+    ))
+    arr = np.load(out / "secondary_peak_global_periodic_continuous_train_processed_waveforms.npy")
+    assert arr.shape == (2, 300)
+    assert summary["window_output_layout"] == "continuous-train"
+    assert summary["waveform_shape"] == [2, 300]
+    assert summary["train_samples"] == 300
+    assert (out / "global_periodic_continuous_train_manifest.csv").exists()
+    assert (out / "raw_global_periodic_continuous_train_waveforms.npy").exists()
+
+
+def test_cli_postprocess_global_periodic_continuous_train(tmp_path: Path):
+    macro, echo, out = _prep_fixture(tmp_path)
+    runner = CliRunner()
+    result = runner.invoke(app, [
+        "postprocess-peak-windows", "--macro-dir", str(macro), "--echo-dir", str(echo), "--output-dir", str(out),
+        "--window-mode", "global-periodic-common", "--window-anchor", "first", "--window-output-layout", "continuous-train"
+    ])
+    assert result.exit_code == 0
+    summary = json.loads((out / "secondary_peak_processed_summary.json").read_text(encoding="utf-8"))
+    assert summary["window_output_layout"] == "continuous-train"
+    assert summary["waveform_shape"] == [2, 300]
+
+
 def test_plan_only(tmp_path: Path):
     macro, echo, out = _prep_fixture(tmp_path)
     summary = run_peak_window_postprocess(PeakWindowPostprocessConfig(macro_dir=macro, echo_dir=echo, output_dir=out, window_mode="global-periodic-common", plan_only=True))

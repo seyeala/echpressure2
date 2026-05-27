@@ -796,6 +796,7 @@ def postprocess_peak_windows(
     use_last_common_windows: bool = typer.Option(True, "--use-last-common-windows/--use-first-common-windows"),
     window_mode: str = typer.Option("peak-to-peak", "--window-mode", help="Windowing mode: peak-to-peak | global-periodic-common"),
     window_anchor: str = typer.Option("first", "--window-anchor", help="Anchor for global-periodic-common: first | last"),
+    window_output_layout: str = typer.Option("period-rows", "--window-output-layout", help="Global periodic output layout: period-rows | continuous-train"),
     use_registered_first_peaks: bool = typer.Option(False, "--use-registered-first-peaks/--no-use-registered-first-peaks"),
     require_registered_first_peaks: bool = typer.Option(False, "--require-registered-first-peaks/--no-require-registered-first-peaks"),
     periodicity_tolerance_frac: float = typer.Option(0.12, "--periodicity-tolerance-frac"),
@@ -807,6 +808,8 @@ def postprocess_peak_windows(
         raise typer.BadParameter("window_mode must be one of: peak-to-peak, global-periodic-common", param_hint="--window-mode")
     if window_anchor not in {"first", "last"}:
         raise typer.BadParameter("window_anchor must be one of: first, last", param_hint="--window-anchor")
+    if window_output_layout not in {"period-rows", "continuous-train"}:
+        raise typer.BadParameter("window_output_layout must be one of: period-rows, continuous-train", param_hint="--window-output-layout")
 
     summary = run_peak_window_postprocess(PeakWindowPostprocessConfig(
         macro_dir=macro_dir,
@@ -821,6 +824,7 @@ def postprocess_peak_windows(
         use_last_common_windows=use_last_common_windows,
         window_mode=window_mode,
         window_anchor=window_anchor,
+        window_output_layout=window_output_layout,
         use_registered_first_peaks=use_registered_first_peaks,
         require_registered_first_peaks=require_registered_first_peaks,
         periodicity_tolerance_frac=periodicity_tolerance_frac,
