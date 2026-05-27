@@ -69,13 +69,19 @@ def run_prepare_align(dataset_root: Path, out_dir: Path, channel: int, baseline_
         active = resolve_active_align(out_dir, dataset_root)
         return {'status': 'ready' if active['status'] == 'ok' else 'blocked', 'can_continue': active['status'] == 'ok', **active}
 
-    index_path = dataset_root / 'index.json'
+    index_path = out_dir / 'index.json'
     if force or not index_path.exists():
         rec = PipelineStageRecord(stage_name='index', status='running', started_at=state.updated_at)
         _record_stage(state, rec)
         t0 = perf_counter()
         idx = DatasetIndexer(dataset_root)
-        digest = idx.export_index()
+        sessions = idx.sessions()
+        index_data = {
+            'pstreams': {sid: [str(p) for p in idx.get_pstreams(sid, fallback=False)] for sid in sessions},
+            'ostreams': {sid: [str(o) for o in idx.get_ostreams(sid, fallback=False)] for sid in sessions},
+        }
+        index_path.parent.mkdir(parents=True, exist_ok=True)
+        index_path.write_text(json.dumps(index_data, indent=2), encoding='utf-8')
         rec.status = 'success'
         rec.outputs = {'index_json': str(index_path)}
         rec.finished_at = state.updated_at

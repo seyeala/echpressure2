@@ -41,7 +41,7 @@ class PipelineFailure:
 class PipelineArtifact:
     logical_name: str
     path: str
-    relative_path: str
+    relative_path: Optional[str]
     exists: bool
     status: ArtifactStatus
     size_bytes: Optional[int] = None
@@ -195,10 +195,19 @@ def load_pipeline_state(out_dir: Path) -> Optional[PipelineState]:
 def build_artifact(out_dir: Path, logical_name: str, path: Path, producer_stage: Optional[str] = None, required_columns: Optional[List[str]] = None, actual_columns: Optional[List[str]] = None, row_count: Optional[int] = None, status: ArtifactStatus = 'ok') -> PipelineArtifact:
     exists = path.exists()
     st = path.stat() if exists else None
+    resolved_out = out_dir.resolve()
+    resolved_path = path.resolve() if exists else path
+    relative_path: Optional[str]
+    if exists and resolved_path.is_relative_to(resolved_out):
+        relative_path = str(resolved_path.relative_to(resolved_out))
+    elif exists:
+        relative_path = None
+    else:
+        relative_path = str(path)
     return PipelineArtifact(
         logical_name=logical_name,
-        path=str(path.resolve()) if exists else str(path),
-        relative_path=str(path.resolve().relative_to(out_dir.resolve())) if exists and out_dir.exists() else str(path),
+        path=str(resolved_path),
+        relative_path=relative_path,
         exists=exists,
         status='ok' if exists and status == 'ok' else ('missing' if not exists else status),
         size_bytes=st.st_size if st else None,
