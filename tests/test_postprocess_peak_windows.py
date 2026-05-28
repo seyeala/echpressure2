@@ -11,6 +11,8 @@ from echopress.core.peak_window_postprocess import (
     build_global_periodic_window_plan,
     run_peak_window_postprocess,
 )
+from echopress.core.waveform_products import resolve_waveform_product
+from echopress.core.fft_export import FFTExportConfig, run_fft_postprocessed
 
 
 def _make_npz(path: Path, y: np.ndarray) -> None:
@@ -108,6 +110,11 @@ def test_postprocess_global_periodic_continuous_train_shape(tmp_path: Path):
     assert summary["train_samples"] == 300
     assert (out / "global_periodic_continuous_train_manifest.csv").exists()
     assert (out / "raw_global_periodic_continuous_train_waveforms.npy").exists()
+    assert summary["n_rows"] == 2
+    assert summary["n_periods_total"] == 6
+    assert summary["method"] == "global_periodic_common_continuous_train"
+    assert not (out / "raw_first_peak_to_first_peak_aligned_waveforms.npy").exists()
+    assert not (out / "secondary_peak_processed_waveforms.npy").exists()
 
 
 def test_cli_postprocess_global_periodic_continuous_train(tmp_path: Path):
@@ -143,3 +150,29 @@ def test_postprocess_writes_waveform_products_continuous_train(tmp_path: Path):
     assert "raw_continuous_train" in products
     summary = json.loads((out / "secondary_peak_processed_summary.json").read_text(encoding="utf-8"))
     assert products["processed_continuous_train"]["shape"] == summary["waveform_shape"]
+
+
+def test_waveform_products_resolves_processed_continuous_train(tmp_path: Path):
+    macro, echo, out = _prep_fixture(tmp_path)
+    run_peak_window_postprocess(PeakWindowPostprocessConfig(
+        macro_dir=macro, echo_dir=echo, output_dir=out, window_mode="global-periodic-common", window_output_layout="continuous-train"
+    ))
+    product = resolve_waveform_product(out, "processed_continuous_train")
+    assert Path(product["waveform_path"]).name == "secondary_peak_global_periodic_continuous_train_processed_waveforms.npy"
+    assert product["shape"] == [2, 300]
+    manifest = pd.read_csv(product["manifest_path"])
+    assert len(manifest) == 2
+
+
+def test_fft_uses_processed_continuous_train(tmp_path: Path):
+    macro, echo, out = _prep_fixture(tmp_path)
+    run_peak_window_postprocess(PeakWindowPostprocessConfig(
+        macro_dir=macro, echo_dir=echo, output_dir=out, window_mode="global-periodic-common", window_output_layout="continuous-train"
+    ))
+    fft_summary = run_fft_postprocessed(FFTExportConfig(
+        postprocess_dir=out, source_product="processed_continuous_train", fft_mode="full", output_bins=1024
+    ))
+    assert fft_summary["source_product"] == "processed_continuous_train"
+    assert fft_summary["source_window_output_layout"] == "continuous-train"
+    assert fft_summary["n_rows"] == 2
+    assert fft_summary["cropped_time_domain"] is False

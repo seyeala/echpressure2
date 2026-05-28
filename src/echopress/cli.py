@@ -803,6 +803,8 @@ def postprocess_peak_windows(
     max_common_windows: Optional[int] = typer.Option(None, "--max-common-windows"),
     window_length_samples: Optional[int] = typer.Option(None, "--window-length-samples"),
     plan_only: bool = typer.Option(False, "--plan-only/--write-waveforms"),
+    write_legacy_aliases: bool = typer.Option(False, "--write-legacy-aliases/--no-write-legacy-aliases"),
+    strict_legacy_aliases: bool = typer.Option(False, "--strict-legacy-aliases/--no-strict-legacy-aliases"),
 ) -> None:
     if window_mode not in {"peak-to-peak", "global-periodic-common"}:
         raise typer.BadParameter("window_mode must be one of: peak-to-peak, global-periodic-common", param_hint="--window-mode")
@@ -831,6 +833,8 @@ def postprocess_peak_windows(
         max_common_windows=max_common_windows,
         window_length_samples=window_length_samples,
         plan_only=plan_only,
+        write_legacy_aliases=write_legacy_aliases,
+        strict_legacy_aliases=strict_legacy_aliases,
     ))
     typer.echo(json.dumps(summary, indent=2, default=float))
 
