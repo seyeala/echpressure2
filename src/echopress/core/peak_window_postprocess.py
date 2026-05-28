@@ -58,6 +58,8 @@ class PeakWindowPostprocessConfig:
     max_common_windows: Optional[int] = None
     window_length_samples: Optional[int] = None
     plan_only: bool = False
+    write_legacy_aliases: bool = False
+    strict_legacy_aliases: bool = False
 
 
 DEFAULTS: dict[str, Any] = {
@@ -76,6 +78,8 @@ DEFAULTS: dict[str, Any] = {
     "max_common_windows": None,
     "window_length_samples": None,
     "plan_only": False,
+    "write_legacy_aliases": False,
+    "strict_legacy_aliases": False,
 }
 
 
@@ -226,6 +230,8 @@ def run_peak_window_postprocess(cfg: PeakWindowPostprocessConfig) -> dict[str, A
         return summary
 
     layout = str(rcfg["window_output_layout"])
+    write_legacy_aliases = bool(rcfg.get("write_legacy_aliases", False))
+    strict_legacy_aliases = bool(rcfg.get("strict_legacy_aliases", False))
     manifest_rows=[]; gain_rows=[]; marker_rows=[]
     if layout == "continuous-train":
         common_window_count = int(plan_df["common_window_count"].iloc[0])
@@ -258,6 +264,42 @@ def run_peak_window_postprocess(cfg: PeakWindowPostprocessConfig) -> dict[str, A
         plan_df.to_csv(out_dir/"global_periodic_continuous_train_plan.csv",index=False)
         np.save(out_dir/"raw_global_periodic_continuous_train_waveforms.npy",raw_aligned)
         np.save(out_dir/"secondary_peak_global_periodic_continuous_train_processed_waveforms.npy",proc_aligned)
+        pd.DataFrame(gain_rows).to_csv(out_dir/"secondary_peak_gain_table.csv",index=False)
+        pd.DataFrame(marker_rows).to_csv(out_dir/"plot_marker_table.csv",index=False)
+        train_samples = int(plan_df["common_window_count"].iloc[0]) * int(window_len)
+        summary.update({
+            "window_mode": "global-periodic-common",
+            "window_output_layout": "continuous-train",
+            "T_global_samples": t_global,
+            "period_samples": int(window_len),
+            "window_samples": int(window_len),
+            "common_window_count": int(plan_df["common_window_count"].iloc[0]),
+            "train_samples": train_samples,
+            "n_files": int(manifest["path"].nunique()),
+            "n_rows": int(manifest["path"].nunique()),
+            "n_periods_total": int(len(plan_df)),
+            "n_windows": int(len(plan_df)),
+            "waveform_shape": list(proc_aligned.shape),
+            "source_layout": "continuous-train",
+            "method": "global_periodic_common_continuous_train",
+            "gain_clip_min": float(rcfg["gain_clip_min"]),
+            "gain_clip_max": float(rcfg["gain_clip_max"]),
+            "peak_neighbor_us": float(rcfg["peak_neighbor_us"]),
+            "zero_first_pulse_us": float(rcfg["zero_first_pulse_us"]),
+            "used_peak_table": str(used_peak_table),
+            "plan_only": False,
+        })
+        (out_dir/"secondary_peak_processed_summary.json").write_text(json.dumps(summary,indent=2),encoding="utf-8")
+        _write_waveform_products_registry(out_dir, summary)
+        if write_legacy_aliases:
+            try:
+                manifest.to_csv(out_dir/"secondary_peak_processed_manifest.csv",index=False)
+                np.save(out_dir/"raw_first_peak_to_first_peak_aligned_waveforms.npy",raw_aligned)
+                np.save(out_dir/"secondary_peak_processed_waveforms.npy",proc_aligned)
+            except Exception:
+                if strict_legacy_aliases:
+                    raise
+        return summary
     else:
         raw_aligned=np.zeros((len(plan_df),window_len),dtype=np.float32); proc_aligned=np.zeros((len(plan_df),window_len),dtype=np.float32)
         for i,row in plan_df.iterrows():
@@ -276,15 +318,20 @@ def run_peak_window_postprocess(cfg: PeakWindowPostprocessConfig) -> dict[str, A
             manifest_rows.append({"path":path,"file":row.get("file",Path(path).name),"pressure_value":row.get("pressure_value",np.nan),"file_index":row.get("file_index",-1),"window_index":i,"selected_window_index":int(row["selected_window_index"]),"start_first_peak_idx":s,"end_idx_exclusive":e,"n_samples":int(row["n_samples"]),"T_global_samples":int(row["T_global_samples"]),"window_mode":"global-periodic-common","window_anchor":rcfg["window_anchor"],"window_output_layout":"period-rows","common_window_count":int(row["common_window_count"]),"snap_error_samples":int(row["snap_error_samples"]),"snap_error_frac_of_T":float(row["snap_error_frac_of_T"]),"gain":gain})
         manifest=pd.DataFrame(manifest_rows)
         manifest.to_csv(out_dir/"global_periodic_window_manifest.csv",index=False)
-    manifest.to_csv(out_dir/"secondary_peak_processed_manifest.csv",index=False)
     pd.DataFrame(gain_rows).to_csv(out_dir/"secondary_peak_gain_table.csv",index=False)
     pd.DataFrame(marker_rows).to_csv(out_dir/"plot_marker_table.csv",index=False)
     np.save(out_dir/"raw_global_periodic_aligned_waveforms.npy",raw_aligned)
     np.save(out_dir/"secondary_peak_global_periodic_processed_waveforms.npy",proc_aligned)
-    np.save(out_dir/"raw_first_peak_to_first_peak_aligned_waveforms.npy",raw_aligned)
-    np.save(out_dir/"secondary_peak_processed_waveforms.npy",proc_aligned)
     train_samples = int(plan_df["common_window_count"].iloc[0]) * int(window_len)
-    summary.update({"T_global_samples":t_global,"window_samples":window_len,"common_window_count":int(plan_df["common_window_count"].iloc[0]),"n_files":int(manifest["path"].nunique()),"n_windows":int(len(manifest)),"waveform_shape":list(proc_aligned.shape),"period_samples":int(window_len),"train_samples":train_samples,"method":"global_periodic_common_fixed"})
+    summary.update({"T_global_samples":t_global,"window_samples":window_len,"common_window_count":int(plan_df["common_window_count"].iloc[0]),"n_files":int(manifest["path"].nunique()),"n_rows":int(len(manifest)),"n_windows":int(len(manifest)),"waveform_shape":list(proc_aligned.shape),"period_samples":int(window_len),"train_samples":train_samples,"n_periods_total":int(len(manifest)),"method":"global_periodic_common_fixed"})
     (out_dir/"secondary_peak_processed_summary.json").write_text(json.dumps(summary,indent=2),encoding="utf-8")
     _write_waveform_products_registry(out_dir, summary)
+    if write_legacy_aliases:
+        try:
+            manifest.to_csv(out_dir/"secondary_peak_processed_manifest.csv",index=False)
+            np.save(out_dir/"raw_first_peak_to_first_peak_aligned_waveforms.npy",raw_aligned)
+            np.save(out_dir/"secondary_peak_processed_waveforms.npy",proc_aligned)
+        except Exception:
+            if strict_legacy_aliases:
+                raise
     return summary
