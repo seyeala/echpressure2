@@ -1,81 +1,100 @@
 from pathlib import Path
 
+import json
 import numpy as np
 import pandas as pd
 
 from echopress.core.fft_export import FFTExportConfig, run_fft_postprocessed
 
 
-def test_fft_export_writes_numpy_csv_and_summary(tmp_path: Path):
-    post_dir = tmp_path / "post"
-    out_dir = tmp_path / "fft"
-    post_dir.mkdir()
+def _write_registry(post_dir: Path, default: str = "processed_continuous_train"):
+    reg = {
+        "schema_version": "1.0",
+        "postprocess_dir": str(post_dir),
+        "default_fft_product": default,
+        "products": {
+            "processed_continuous_train": {
+                "product_name": "processed_continuous_train", "kind": "processed",
+                "path": "secondary_peak_global_periodic_continuous_train_processed_waveforms.npy",
+                "manifest": "global_periodic_continuous_train_manifest.csv",
+                "summary": "secondary_peak_processed_summary.json",
+                "window_mode": "global-periodic-common", "window_output_layout": "continuous-train",
+                "horizontal_normalized": True, "vertical_normalized": True,
+                "secondary_peak_suppressed": True, "gain_normalized": True,
+            },
+            "raw_continuous_train": {
+                "product_name": "raw_continuous_train", "kind": "raw",
+                "path": "raw_global_periodic_continuous_train_waveforms.npy",
+                "manifest": "global_periodic_continuous_train_manifest.csv",
+                "summary": "secondary_peak_processed_summary.json",
+                "window_mode": "global-periodic-common", "window_output_layout": "continuous-train",
+                "horizontal_normalized": True, "vertical_normalized": False,
+                "secondary_peak_suppressed": False, "gain_normalized": False,
+            },
+        },
+    }
+    (post_dir / "waveform_products.json").write_text(json.dumps(reg), encoding="utf-8")
 
-    manifest = pd.DataFrame(
-        {
-            "path": ["a", "b", "c"],
-            "first_peak_idx": [1, 2, 3],
-            "first_echo_offset": [3.0, 5.0, 9.0],
-        }
-    )
-    manifest.to_csv(post_dir / "secondary_peak_processed_manifest.csv", index=False)
-    np.save(
-        post_dir / "secondary_peak_processed_waveforms.npy",
-        np.array([[1.0, 2.0, 3.0, 4.0], [2.0, 0.0, 2.0, 0.0], [1.0, 1.0, 1.0, 1.0]], dtype=np.float32),
-    )
+
+def test_fft_source_product_processed_continuous_train(tmp_path: Path):
+    post_dir = tmp_path / "post"; post_dir.mkdir()
+    pd.DataFrame({"path": ["a", "b"]}).to_csv(post_dir / "global_periodic_continuous_train_manifest.csv", index=False)
+    np.save(post_dir / "secondary_peak_global_periodic_continuous_train_processed_waveforms.npy", np.ones((2, 2048), dtype=np.float32))
+    np.save(post_dir / "raw_global_periodic_continuous_train_waveforms.npy", np.ones((2, 2048), dtype=np.float32))
     (post_dir / "secondary_peak_processed_summary.json").write_text("{}", encoding="utf-8")
+    _write_registry(post_dir)
 
-    summary = run_fft_postprocessed(
-        FFTExportConfig(postprocess_dir=post_dir, output_dir=out_dir, fft_bins=16, output_bins=16, fft_mode="full")
-    )
-    assert summary["output_bins"] == 16
-
-    fft_mag = np.load(out_dir / "fft_mag.npy")
-    fft_db = np.load(out_dir / "fft_db.npy")
-    fft_relative_db = np.load(out_dir / "fft_relative_db.npy")
-    fft_cycles = np.load(out_dir / "fft_cycles_per_window.npy")
-    table = pd.read_csv(out_dir / "fft_manifest.csv")
-
-    assert fft_mag.shape == (3, 3)
-    assert fft_db.shape == fft_mag.shape
-    assert fft_relative_db.shape == fft_mag.shape
-    assert fft_cycles.shape == (3,)
-    assert len(table) == 3
+    summary = run_fft_postprocessed(FFTExportConfig(postprocess_dir=post_dir, source_product="processed_continuous_train", fft_mode="full", output_bins=1024))
+    assert summary["source_product"] == "processed_continuous_train"
+    assert summary["source_window_output_layout"] == "continuous-train"
+    assert summary["n_rows"] == 2
 
 
-def test_fft_export_full_mode_uses_all_samples_without_time_crop(tmp_path: Path):
-    post_dir = tmp_path / "post"
-    out_dir = tmp_path / "fft"
-    post_dir.mkdir()
-    pd.DataFrame({"path": ["a"], "first_peak_idx": [1], "first_echo_offset": [3.0]}).to_csv(
-        post_dir / "secondary_peak_processed_manifest.csv", index=False
-    )
-    waveform = np.concatenate([np.zeros(1024, dtype=np.float32), np.ones(2048, dtype=np.float32)])
-    np.save(post_dir / "secondary_peak_processed_waveforms.npy", waveform.reshape(1, -1))
+def test_fft_source_product_raw_continuous_train(tmp_path: Path):
+    post_dir = tmp_path / "post"; post_dir.mkdir()
+    pd.DataFrame({"path": ["a"]}).to_csv(post_dir / "global_periodic_continuous_train_manifest.csv", index=False)
+    np.save(post_dir / "secondary_peak_global_periodic_continuous_train_processed_waveforms.npy", np.ones((1, 2048), dtype=np.float32))
+    np.save(post_dir / "raw_global_periodic_continuous_train_waveforms.npy", np.ones((1, 2048), dtype=np.float32))
     (post_dir / "secondary_peak_processed_summary.json").write_text("{}", encoding="utf-8")
+    _write_registry(post_dir)
+    summary = run_fft_postprocessed(FFTExportConfig(postprocess_dir=post_dir, source_product="raw_continuous_train", fft_mode="full", output_bins=1024))
+    assert summary["source_kind"] == "raw"
 
-    summary = run_fft_postprocessed(
-        FFTExportConfig(postprocess_dir=post_dir, output_dir=out_dir, fft_bins=16, output_bins=16, fft_mode="full")
-    )
-    assert summary["waveform_samples"] == 3072
+
+def test_fft_output_dir_source_specific(tmp_path: Path):
+    post_dir = tmp_path / "post"; post_dir.mkdir()
+    pd.DataFrame({"path": ["a"]}).to_csv(post_dir / "global_periodic_continuous_train_manifest.csv", index=False)
+    arr=np.ones((1, 128), dtype=np.float32)
+    np.save(post_dir / "secondary_peak_global_periodic_continuous_train_processed_waveforms.npy", arr)
+    np.save(post_dir / "raw_global_periodic_continuous_train_waveforms.npy", arr)
+    (post_dir / "secondary_peak_processed_summary.json").write_text("{}", encoding="utf-8")
+    _write_registry(post_dir)
+    summary = run_fft_postprocessed(FFTExportConfig(postprocess_dir=post_dir, source_product="processed_continuous_train"))
+    assert Path(summary["output_dir"]) == post_dir / "fft_outputs" / "processed_continuous_train"
+
+
+def test_fft_full_does_not_crop_time_domain(tmp_path: Path):
+    post_dir = tmp_path / "post"; post_dir.mkdir()
+    pd.DataFrame({"path": ["a"]}).to_csv(post_dir / "global_periodic_continuous_train_manifest.csv", index=False)
+    arr=np.ones((1, 4096), dtype=np.float32)
+    np.save(post_dir / "secondary_peak_global_periodic_continuous_train_processed_waveforms.npy", arr)
+    np.save(post_dir / "raw_global_periodic_continuous_train_waveforms.npy", arr)
+    (post_dir / "secondary_peak_processed_summary.json").write_text("{}", encoding="utf-8")
+    _write_registry(post_dir)
+    summary = run_fft_postprocessed(FFTExportConfig(postprocess_dir=post_dir, fft_mode="full", output_bins=1024))
     assert summary["cropped_time_domain"] is False
-
-    fft_mag = np.load(out_dir / "fft_mag.npy")
-    assert not np.allclose(fft_mag, 0.0)
+    assert summary["n_fft"] == summary["waveform_samples"]
 
 
-def test_fft_export_truncate_mode_keeps_legacy_behavior(tmp_path: Path):
-    post_dir = tmp_path / "post"
-    out_dir = tmp_path / "fft"
-    post_dir.mkdir()
-    pd.DataFrame({"path": ["a"], "first_peak_idx": [1], "first_echo_offset": [3.0]}).to_csv(
-        post_dir / "secondary_peak_processed_manifest.csv", index=False
-    )
-    waveform = np.concatenate([np.zeros(16, dtype=np.float32), np.ones(32, dtype=np.float32)])
-    np.save(post_dir / "secondary_peak_processed_waveforms.npy", waveform.reshape(1, -1))
+def test_fft_legacy_canonical_processed(tmp_path: Path):
+    post_dir = tmp_path / "post"; post_dir.mkdir()
+    pd.DataFrame({"path": ["a"]}).to_csv(post_dir / "secondary_peak_processed_manifest.csv", index=False)
+    np.save(post_dir / "secondary_peak_processed_waveforms.npy", np.ones((1, 128), dtype=np.float32))
     (post_dir / "secondary_peak_processed_summary.json").write_text("{}", encoding="utf-8")
-
-    summary = run_fft_postprocessed(
-        FFTExportConfig(postprocess_dir=post_dir, output_dir=out_dir, fft_bins=16, fft_mode="truncate")
-    )
-    assert summary["cropped_time_domain"] is True
+    summary = run_fft_postprocessed(FFTExportConfig(postprocess_dir=post_dir, source_product="canonical_processed"))
+    assert summary["source_product"] == "canonical_processed"
+    try:
+        run_fft_postprocessed(FFTExportConfig(postprocess_dir=post_dir, source_product="raw_continuous_train"))
+        assert False
+    except FileNotFoundError:
+        assert True

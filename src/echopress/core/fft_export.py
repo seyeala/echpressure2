@@ -9,17 +9,19 @@ import numpy as np
 import pandas as pd
 
 from echopress.core.config_io import merge_config, write_resolved_config
+from echopress.core.waveform_products import resolve_waveform_product
 
 
 @dataclass(frozen=True)
 class FFTExportConfig:
     postprocess_dir: Path
-    output_dir: Path
+    output_dir: Optional[Path] = None
     config: Optional[Path] = None
-    fft_bins: Optional[int] = 256
+    source_product: Optional[str] = None
     fft_mode: str = "full"
     n_fft: Optional[int] = None
     output_bins: Optional[int] = None
+    fft_bins: Optional[int] = None
 
 
 def _reduce_spectrum_bins(spectrum: np.ndarray, output_bins: int) -> np.ndarray:
@@ -41,38 +43,25 @@ def _resolve_config(cfg: FFTExportConfig) -> dict[str, Any]:
     default_yml = Path(__file__).resolve().parents[3] / "configs" / "fft_export.default.yml"
     rcfg = merge_config(default_yaml_path=default_yml, user_yaml_path=cfg.config, cli_values=asdict(cfg))
     rcfg["postprocess_dir"] = str(cfg.postprocess_dir)
-    rcfg["output_dir"] = str(cfg.output_dir)
+    rcfg["output_dir"] = str(cfg.output_dir) if cfg.output_dir is not None else None
     return rcfg
 
 
 def run_fft_postprocessed(cfg: FFTExportConfig) -> dict[str, Any]:
     rcfg = _resolve_config(cfg)
-    out_dir = Path(rcfg["output_dir"])
+    post_dir = Path(rcfg["postprocess_dir"])
+    source_meta = resolve_waveform_product(postprocess_dir=post_dir, source_product=rcfg.get("source_product"))
+
+    out_dir = Path(rcfg["output_dir"]) if rcfg.get("output_dir") else post_dir / "fft_outputs" / str(source_meta["product_name"])
     out_dir.mkdir(parents=True, exist_ok=True)
+    rcfg["output_dir"] = str(out_dir)
     write_resolved_config(rcfg, out_dir / "fft-postprocessed_config.resolved.yml")
 
-    post_dir = Path(rcfg["postprocess_dir"])
-    in_waveforms = post_dir / "secondary_peak_processed_waveforms.npy"
-    in_manifest = post_dir / "secondary_peak_processed_manifest.csv"
-    in_summary = post_dir / "secondary_peak_processed_summary.json"
-    missing = [str(p) for p in [in_waveforms, in_manifest, in_summary] if not p.exists()]
-    if missing:
-        raise FileNotFoundError(
-            "fft-postprocessed requires outputs from postprocess-peak-windows:\n" + "\n".join(missing)
-        )
-
-    waveforms = np.load(in_waveforms)
-    manifest = pd.read_csv(in_manifest)
-    _ = json.loads(in_summary.read_text(encoding="utf-8"))
-
-    if waveforms.ndim != 2:
-        raise ValueError(f"secondary_peak_processed_waveforms.npy must be 2D [n_files, n_samples], got shape={waveforms.shape}")
-    if len(manifest) != int(waveforms.shape[0]):
-        raise ValueError(
-            f"row count mismatch: secondary_peak_processed_manifest.csv has {len(manifest)} rows but waveforms has {waveforms.shape[0]}"
-        )
-
+    waveforms = np.load(source_meta["waveform_path"])
+    manifest = pd.read_csv(source_meta["manifest_path"])
+    _ = json.loads(source_meta["summary_path"].read_text(encoding="utf-8"))
     n_samples = int(waveforms.shape[1])
+
     fft_mode = str(rcfg.get("fft_mode", "full"))
     if fft_mode not in {"full", "truncate", "resample-spectrum"}:
         raise ValueError("fft_mode must be one of: full, truncate, resample-spectrum")
@@ -119,6 +108,18 @@ def run_fft_postprocessed(cfg: FFTExportConfig) -> dict[str, Any]:
     manifest.to_csv(out_dir / "fft_manifest.csv", index=False)
 
     summary = {
+        "source_product": source_meta["product_name"],
+        "source_waveform_file": str(source_meta["waveform_path"]),
+        "source_manifest_file": str(source_meta["manifest_path"]),
+        "source_summary_file": str(source_meta["summary_path"]),
+        "source_kind": source_meta.get("kind"),
+        "source_window_mode": source_meta.get("window_mode"),
+        "source_window_output_layout": source_meta.get("window_output_layout"),
+        "horizontal_normalized": source_meta.get("horizontal_normalized"),
+        "vertical_normalized": source_meta.get("vertical_normalized"),
+        "secondary_peak_suppressed": source_meta.get("secondary_peak_suppressed"),
+        "gain_normalized": source_meta.get("gain_normalized"),
+        "source_waveform_shape": source_meta["shape"],
         "n_rows": int(waveforms.shape[0]),
         "window_samples": n_samples,
         "waveform_samples": n_samples,
@@ -128,6 +129,7 @@ def run_fft_postprocessed(cfg: FFTExportConfig) -> dict[str, Any]:
         "n_fft": effective_n_fft,
         "cropped_time_domain": cropped_time_domain,
         "n_fft_points": int(fft_mag.shape[1]),
+        "output_dir": str(out_dir),
     }
     (out_dir / "fft_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     return summary
