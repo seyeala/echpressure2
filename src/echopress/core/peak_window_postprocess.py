@@ -12,6 +12,31 @@ from echopress.core.config_io import merge_config, write_resolved_config
 from echopress.ingest import load_ostream
 
 
+def _write_waveform_products_registry(out_dir: Path, summary: dict[str, Any]) -> None:
+    products: dict[str, dict[str, Any]] = {}
+    candidates = {
+        "processed_continuous_train": {"product_name":"processed_continuous_train","kind":"processed","path":"secondary_peak_global_periodic_continuous_train_processed_waveforms.npy","manifest":"global_periodic_continuous_train_manifest.csv","summary":"secondary_peak_processed_summary.json","window_mode":"global-periodic-common","window_output_layout":"continuous-train","horizontal_normalized":True,"vertical_normalized":True,"secondary_peak_suppressed":True,"gain_normalized":True},
+        "raw_continuous_train": {"product_name":"raw_continuous_train","kind":"raw","path":"raw_global_periodic_continuous_train_waveforms.npy","manifest":"global_periodic_continuous_train_manifest.csv","summary":"secondary_peak_processed_summary.json","window_mode":"global-periodic-common","window_output_layout":"continuous-train","horizontal_normalized":True,"vertical_normalized":False,"secondary_peak_suppressed":False,"gain_normalized":False},
+        "processed_period_rows": {"product_name":"processed_period_rows","kind":"processed","path":"secondary_peak_global_periodic_processed_waveforms.npy","manifest":"global_periodic_window_manifest.csv","summary":"secondary_peak_processed_summary.json","window_mode":"global-periodic-common","window_output_layout":"period-rows"},
+        "raw_period_rows": {"product_name":"raw_period_rows","kind":"raw","path":"raw_global_periodic_aligned_waveforms.npy","manifest":"global_periodic_window_manifest.csv","summary":"secondary_peak_processed_summary.json","window_mode":"global-periodic-common","window_output_layout":"period-rows"},
+        "canonical_processed": {"product_name":"canonical_processed","kind":"processed","path":"secondary_peak_processed_waveforms.npy","manifest":"secondary_peak_processed_manifest.csv","summary":"secondary_peak_processed_summary.json"},
+    }
+    for name, meta in candidates.items():
+        if (out_dir / meta["path"]).exists() and (out_dir / meta["manifest"]).exists() and (out_dir / meta["summary"]).exists():
+            row = dict(meta)
+            if name in {"processed_continuous_train", "raw_continuous_train"}:
+                row["shape"] = list(summary.get("waveform_shape") or [])
+                row["dtype"] = "float32"
+            products[name] = row
+    default_fft_product = "canonical_processed"
+    if "processed_continuous_train" in products:
+        default_fft_product = "processed_continuous_train"
+    elif "processed_period_rows" in products:
+        default_fft_product = "processed_period_rows"
+    registry = {"schema_version":"1.0","postprocess_dir":str(out_dir),"default_fft_product":default_fft_product,"products":products}
+    (out_dir / "waveform_products.json").write_text(json.dumps(registry, indent=2), encoding="utf-8")
+
+
 @dataclass(frozen=True)
 class PeakWindowPostprocessConfig:
     macro_dir: Path
@@ -184,6 +209,7 @@ def run_peak_window_postprocess(cfg: PeakWindowPostprocessConfig) -> dict[str, A
         np.save(out_dir/"secondary_peak_processed_waveforms.npy",proc_aligned)
         summary={"window_mode":"peak-to-peak","window_anchor":"last" if rcfg["use_last_common_windows"] else "first","T_global_samples":t_global,"window_samples":None,"common_window_count":None,"n_files":int(manifest["path"].nunique()),"n_windows":int(len(manifest)),"waveform_shape":list(proc_aligned.shape),"periodicity_tolerance_frac":float(rcfg["periodicity_tolerance_frac"]),"max_common_windows":rcfg.get("max_common_windows"),"use_registered_first_peaks":bool(rcfg["use_registered_first_peaks"]),"used_peak_table":str(used_peak_table),"skipped_incomplete":int(skipped),"skipped_bad_periodicity":0,"plan_only":False,"method":"peak_to_peak_pad"}
         (out_dir/"secondary_peak_processed_summary.json").write_text(json.dumps(summary,indent=2),encoding="utf-8")
+        _write_waveform_products_registry(out_dir, summary)
         return summary
 
     waveforms={}; fs_by_path={}; lengths={}
@@ -196,6 +222,7 @@ def run_peak_window_postprocess(cfg: PeakWindowPostprocessConfig) -> dict[str, A
     if rcfg["plan_only"]:
         summary["waveform_shape"]=None
         (out_dir/"secondary_peak_processed_summary.json").write_text(json.dumps(summary,indent=2),encoding="utf-8")
+        _write_waveform_products_registry(out_dir, summary)
         return summary
 
     layout = str(rcfg["window_output_layout"])
@@ -259,4 +286,5 @@ def run_peak_window_postprocess(cfg: PeakWindowPostprocessConfig) -> dict[str, A
     train_samples = int(plan_df["common_window_count"].iloc[0]) * int(window_len)
     summary.update({"T_global_samples":t_global,"window_samples":window_len,"common_window_count":int(plan_df["common_window_count"].iloc[0]),"n_files":int(manifest["path"].nunique()),"n_windows":int(len(manifest)),"waveform_shape":list(proc_aligned.shape),"period_samples":int(window_len),"train_samples":train_samples,"method":"global_periodic_common_fixed"})
     (out_dir/"secondary_peak_processed_summary.json").write_text(json.dumps(summary,indent=2),encoding="utf-8")
+    _write_waveform_products_registry(out_dir, summary)
     return summary

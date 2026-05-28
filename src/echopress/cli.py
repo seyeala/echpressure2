@@ -674,7 +674,7 @@ def detect_windows(
 def detect_macro_windows(
     dataset_root: Path = typer.Option(..., "--dataset-root", dir_okay=True, file_okay=False, exists=True),
     align_table: Path = typer.Option(..., "--align-table", dir_okay=False, file_okay=True, exists=True),
-    output_dir: Path = typer.Option(..., "--output-dir", dir_okay=True, file_okay=False),
+    output_dir: Optional[Path] = typer.Option(None, "--output-dir", dir_okay=True, file_okay=False),
     config: Optional[Path] = typer.Option(None, "--config", dir_okay=False, file_okay=True),
     channel: int = typer.Option(0, "--channel"),
     k_min: int = typer.Option(1, "--k-min"),
@@ -772,7 +772,7 @@ def detect_echo_peaks(
 @app.command("clean-align")
 def clean_align(
     align_table: Path = typer.Option(..., "--align-table", dir_okay=False, file_okay=True, exists=True),
-    output_dir: Path = typer.Option(..., "--output-dir", dir_okay=True, file_okay=False),
+    output_dir: Optional[Path] = typer.Option(None, "--output-dir", dir_okay=True, file_okay=False),
     config: Optional[Path] = typer.Option(None, "--config", dir_okay=False, file_okay=True),
     alignment_error_max: Optional[float] = typer.Option(1.0, "--alignment-error-max"),
     pressure_min: Optional[float] = typer.Option(None, "--pressure-min"),
@@ -786,7 +786,7 @@ def clean_align(
 def postprocess_peak_windows(
     macro_dir: Path = typer.Option(..., "--macro-dir", dir_okay=True, file_okay=False, exists=True),
     echo_dir: Path = typer.Option(..., "--echo-dir", dir_okay=True, file_okay=False, exists=True),
-    output_dir: Path = typer.Option(..., "--output-dir", dir_okay=True, file_okay=False),
+    output_dir: Optional[Path] = typer.Option(None, "--output-dir", dir_okay=True, file_okay=False),
     config: Optional[Path] = typer.Option(None, "--config", dir_okay=False, file_okay=True),
     channel: int = typer.Option(0, "--channel"),
     zero_first_pulse_us: float = typer.Option(2.0, "--zero-first-pulse-us"),
@@ -838,14 +838,15 @@ def postprocess_peak_windows(
 @app.command("fft-postprocessed")
 def fft_postprocessed(
     postprocess_dir: Path = typer.Option(..., "--postprocess-dir", dir_okay=True, file_okay=False, exists=True),
-    output_dir: Path = typer.Option(..., "--output-dir", dir_okay=True, file_okay=False),
+    output_dir: Optional[Path] = typer.Option(None, "--output-dir", dir_okay=True, file_okay=False),
     config: Optional[Path] = typer.Option(None, "--config", dir_okay=False, file_okay=True),
-    fft_bins: Optional[int] = typer.Option(256, "--fft-bins"),
+    source_product: Optional[str] = typer.Option(None, "--source-product"),
     fft_mode: str = typer.Option("full", "--fft-mode"),
     n_fft: Optional[int] = typer.Option(None, "--n-fft"),
     output_bins: Optional[int] = typer.Option(None, "--output-bins"),
+    fft_bins: Optional[int] = typer.Option(None, "--fft-bins"),
 ) -> None:
-    summary = run_fft_postprocessed(FFTExportConfig(postprocess_dir=postprocess_dir, output_dir=output_dir, config=config, fft_bins=fft_bins, fft_mode=fft_mode, n_fft=n_fft, output_bins=output_bins))
+    summary = run_fft_postprocessed(FFTExportConfig(postprocess_dir=postprocess_dir, output_dir=output_dir, config=config, source_product=source_product, fft_bins=fft_bins, fft_mode=fft_mode, n_fft=n_fft, output_bins=output_bins))
     typer.echo(json.dumps(summary, indent=2, default=float))
 
 

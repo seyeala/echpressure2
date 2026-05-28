@@ -130,3 +130,16 @@ def test_plan_only(tmp_path: Path):
     assert (out / "secondary_peak_processed_summary.json").exists()
     assert not (out / "secondary_peak_global_periodic_processed_waveforms.npy").exists()
     assert summary["plan_only"] is True
+
+
+def test_postprocess_writes_waveform_products_continuous_train(tmp_path: Path):
+    macro, echo, out = _prep_fixture(tmp_path)
+    run_peak_window_postprocess(PeakWindowPostprocessConfig(
+        macro_dir=macro, echo_dir=echo, output_dir=out, window_mode="global-periodic-common", window_output_layout="continuous-train"
+    ))
+    registry = json.loads((out / "waveform_products.json").read_text(encoding="utf-8"))
+    products = registry["products"]
+    assert "processed_continuous_train" in products
+    assert "raw_continuous_train" in products
+    summary = json.loads((out / "secondary_peak_processed_summary.json").read_text(encoding="utf-8"))
+    assert products["processed_continuous_train"]["shape"] == summary["waveform_shape"]
