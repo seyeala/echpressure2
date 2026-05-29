@@ -28,6 +28,10 @@ def _resolve_config(cfg: PressureDatasetConfig) -> dict[str, Any]:
         if k in rcfg.get("dataset", {}) and rcfg.get(k) is None:
             rcfg[k] = rcfg["dataset"][k]
     rcfg["fft_dir"] = str(cfg.fft_dir); rcfg["output_dir"] = str(cfg.output_dir)
+    if cfg.config is not None:
+        rcfg["config"] = str(cfg.config)
+    else:
+        rcfg.pop("config", None)
     return rcfg
 
 def build_pressure_dataset(cfg: PressureDatasetConfig) -> dict[str, Any]:
