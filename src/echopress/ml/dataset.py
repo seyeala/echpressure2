@@ -2,10 +2,10 @@ from __future__ import annotations
 import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, List, Optional
 import numpy as np
 import pandas as pd
-from echopress.core.config_io import merge_config, write_resolved_config
+from echopress.core.config_io import apply_dotted_overrides, merge_config, write_resolved_config
 from .splits import make_pressure_splits
 
 @dataclass(frozen=True)
@@ -20,13 +20,16 @@ class PressureDatasetConfig:
     bin_average: Optional[int] = None
     require_finite: Optional[bool] = None
     drop_nan_targets: Optional[bool] = None
+    overrides: Optional[List[str]] = None
 
 def _resolve_config(cfg: PressureDatasetConfig) -> dict[str, Any]:
     default_yml = Path(__file__).resolve().parents[3] / "configs" / "pressure_regression.default.yml"
     rcfg = merge_config(default_yaml_path=default_yml, user_yaml_path=cfg.config, cli_values=asdict(cfg))
+    rcfg = apply_dotted_overrides(rcfg, cfg.overrides)
     for k in ("feature_source","target_column","freq_min_cycles_per_window","freq_max_cycles_per_window","bin_average","require_finite","drop_nan_targets"):
         if k in rcfg.get("dataset", {}) and rcfg.get(k) is None:
             rcfg[k] = rcfg["dataset"][k]
+    rcfg.pop("overrides", None)
     rcfg["fft_dir"] = str(cfg.fft_dir); rcfg["output_dir"] = str(cfg.output_dir)
     if cfg.config is not None:
         rcfg["config"] = str(cfg.config)
