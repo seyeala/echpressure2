@@ -2,9 +2,9 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 import numpy as np, pandas as pd
-from echopress.core.config_io import merge_config, write_resolved_config
+from echopress.core.config_io import apply_dotted_overrides, merge_config, write_resolved_config
 from .models import build_model
 from .preprocess import fit_transform_preprocess
 
@@ -13,6 +13,7 @@ class PressureTrainConfig:
     dataset_dir: Path
     output_dir: Path
     config: Optional[Path] = None
+    overrides: Optional[List[str]] = None
 
 def run_train(cfg: PressureTrainConfig):
     try:
@@ -21,6 +22,7 @@ def run_train(cfg: PressureTrainConfig):
         raise RuntimeError("TensorFlow is required. Install with: pip install -r requirements-ml.txt") from exc
     default_yml = Path(__file__).resolve().parents[3] / "configs" / "pressure_regression.default.yml"
     rcfg = merge_config(default_yaml_path=default_yml, user_yaml_path=cfg.config, cli_values={"dataset_dir":str(cfg.dataset_dir),"output_dir":str(cfg.output_dir)})
+    rcfg = apply_dotted_overrides(rcfg, cfg.overrides)
     out=Path(cfg.output_dir); out.mkdir(parents=True, exist_ok=True); write_resolved_config(rcfg, out/"train_config.resolved.yml")
     X=np.load(Path(cfg.dataset_dir)/"X.npy"); y=np.load(Path(cfg.dataset_dir)/"y.npy"); split=json.loads((Path(cfg.dataset_dir)/"split.json").read_text())
     tr,va,te=np.array(split["train"]),np.array(split["val"]),np.array(split["test"])

@@ -24,6 +24,7 @@ from .core.echo_peaks import EchoPeakConfig, run_echo_peak_detection
 from .core.align_cleaner import AlignCleanerConfig, run_align_clean
 from .core.peak_window_postprocess import PeakWindowPostprocessConfig, run_peak_window_postprocess
 from .core.fft_export import FFTExportConfig, run_fft_postprocessed
+from .core.config_io import apply_override, parse_override_value
 from .core.qc_plots import QCPlotConfig, run_qc_plot
 from .core.rmcpe import RMCPEConfig, run_rmcpe
 from .core.tables import File2PressureMap, OscFiles, Signals, export_tables
@@ -43,25 +44,10 @@ SEGMENTATION_MODES = ("none", "rmcpe-tciml", "macro-windows")
 
 
 def _parse_override_value(raw: str) -> object:
-    lower = raw.lower()
-    if lower in {"true", "false"}:
-        return lower == "true"
-    if lower in {"null", "none"}:
-        return None
     try:
-        return int(raw)
-    except ValueError:
-        pass
-    try:
-        return float(raw)
-    except ValueError:
-        pass
-    if raw.startswith("[") or raw.startswith("{"):
-        try:
-            return json.loads(raw)
-        except json.JSONDecodeError:
-            raise typer.BadParameter(f"invalid JSON override value: {raw}") from None
-    return raw
+        return parse_override_value(raw)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
 
 
 def _ensure_path(settings: Settings, keys: List[str]) -> None:
@@ -86,14 +72,10 @@ def _ensure_path(settings: Settings, keys: List[str]) -> None:
 
 
 def _apply_override(data: Dict[str, object], keys: List[str], value: object) -> None:
-    target = data
-    for key in keys[:-1]:
-        existing = target.get(key)
-        if not isinstance(existing, dict):
-            existing = {}
-            target[key] = existing
-        target = existing
-    target[keys[-1]] = value
+    try:
+        apply_override(data, keys, value)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
 
 
 def _apply_overrides(settings: Settings, overrides: List[str]) -> Settings:
@@ -1161,9 +1143,10 @@ def build_pressure_regression_dataset(
     fft_dir: Path = typer.Option(..., "--fft-dir", file_okay=False, dir_okay=True),
     output_dir: Path = typer.Option(..., "--output-dir", file_okay=False, dir_okay=True),
     config: Optional[Path] = typer.Option(None, "--config", dir_okay=False, file_okay=True),
+    set_overrides: List[str] = typer.Option([], "--set"),
 ) -> None:
     summary = build_pressure_dataset(
-        PressureDatasetConfig(fft_dir=fft_dir, output_dir=output_dir, config=config)
+        PressureDatasetConfig(fft_dir=fft_dir, output_dir=output_dir, config=config, overrides=set_overrides)
     )
     typer.echo(json.dumps(summary, indent=2))
 
@@ -1173,8 +1156,9 @@ def train_pressure_regressor(
     dataset_dir: Path = typer.Option(..., "--dataset-dir", file_okay=False, dir_okay=True),
     output_dir: Path = typer.Option(..., "--output-dir", file_okay=False, dir_okay=True),
     config: Optional[Path] = typer.Option(None, "--config", dir_okay=False, file_okay=True),
+    set_overrides: List[str] = typer.Option([], "--set"),
 ) -> None:
-    run_train(PressureTrainConfig(dataset_dir=dataset_dir, output_dir=output_dir, config=config))
+    run_train(PressureTrainConfig(dataset_dir=dataset_dir, output_dir=output_dir, config=config, overrides=set_overrides))
     typer.echo(json.dumps({"status": "ok", "output_dir": str(output_dir)}, indent=2))
 
 
@@ -1193,11 +1177,12 @@ def train_pressure_baseline(
     fft_dir: Path = typer.Option(..., "--fft-dir", file_okay=False, dir_okay=True),
     output_dir: Path = typer.Option(..., "--output-dir", file_okay=False, dir_okay=True),
     config: Optional[Path] = typer.Option(None, "--config", dir_okay=False, file_okay=True),
+    set_overrides: List[str] = typer.Option([], "--set"),
 ) -> None:
     dataset_dir = output_dir / "pressure_regression_dataset"
     model_dir = output_dir / "pressure_regressor_tf"
-    build_pressure_dataset(PressureDatasetConfig(fft_dir=fft_dir, output_dir=dataset_dir, config=config))
-    run_train(PressureTrainConfig(dataset_dir=dataset_dir, output_dir=model_dir, config=config))
+    build_pressure_dataset(PressureDatasetConfig(fft_dir=fft_dir, output_dir=dataset_dir, config=config, overrides=set_overrides))
+    run_train(PressureTrainConfig(dataset_dir=dataset_dir, output_dir=model_dir, config=config, overrides=set_overrides))
     run_evaluate(PressureEvalConfig(dataset_dir=dataset_dir, model_dir=model_dir, split="test"))
     typer.echo(json.dumps({"status": "ok", "dataset_dir": str(dataset_dir), "model_dir": str(model_dir)}, indent=2))
 
