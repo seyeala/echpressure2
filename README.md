@@ -286,3 +286,5 @@ python -m echopress.cli pipeline-status --out-dir /content/drive/MyDrive/echpres
 The contract defines expected stage inputs/outputs/checks. The state ledger records what ran, what failed, produced artifacts, and the currently active alignment artifact (`active_align_path`).
 
 Notebooks should call `prepare-align`/`pipeline-bootstrap` and consume returned JSON. Do not hardcode `align.json`, `align.filtered.json`, `align.cleaned.json`, or `align.clean.json` paths.
+
+Research reported in this publication was supported by the National Institute of Biomedical Imaging and Bioengineering of the National Institutes of Health under Award Number R21EB030654. The content is solely the responsibility of the authors and does not necessarily represent the official views of the National Institutes of Health.
