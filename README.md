@@ -10,14 +10,34 @@ formalised in `theory.pdf`.
 
 `echpressure2` ingests two unsynchronised data streams:
 
- - **P-stream** – timestamped pressure measurements expressed in millimetres of
-  mercury (mmHg). P-stream CSVs are conventionally named `voltprsr{ID}.csv`
-  or `ai_log{ID}.csv` and contain `timestamp,pressure` columns.
+- **P-stream** – timestamped numeric measurements, which may be raw sensor
+  voltages or already calibrated pressure values. P-stream CSVs are
+  conventionally named `voltprsr{ID}.csv` or `ai_log{ID}.csv`; accepted layouts
+  include `timestamp,pressure` and `timestamp,<channel>,...` headers.
+  Filenames and the parsed field name `pressure` do not establish physical units.
 - **O-stream** – oscilloscope files containing uniformly sampled waveforms.
 
-Each O-stream file is mapped to the nearest P-stream timestamp, calibrated and
-transformed by modular adapters to yield features for analysis or downstream
-learning tasks.
+Alignment associates an O-stream's midpoint with the nearest P-stream timestamp;
+adapters then extract waveform features. Reading a P-stream and running
+`align` or `prepare-align` do not automatically apply voltage-to-pressure
+calibration. Before producing physical pressure labels, select the intended
+sensor channel, apply its calibration if the values are raw voltage, and
+record the resulting units. Raw PhantomTest `ai_log` files must not be assumed
+to contain pressure in mmHg. See [P-stream formats, selection, and calibration](docs/pstream.md).
+
+## Adapter implementation status
+
+| Adapter | Current implementation | Scope |
+| --- | --- | --- |
+| [DTW-TA (`dtw_ta`)](docs/adapters/dtw_ta.md) | Fixed-length cycle segmentation; returns the cycles unchanged. | Constrained DTW, template alignment, and averaging are planned and are not implemented in this adapter. |
+| [MFCC (`mfcc`)](docs/adapters/mfcc.md) | Log FFT magnitude followed by a DCT-style cosine projection. | A simplified cepstral approximation without mel filter banks; not a complete MFCC implementation. |
+| [HTE (`hte`)](docs/adapters/hte.md) | Magnitude of the analytic signal, computed using FFT/IFFT. | Produces an envelope for each cycle; shifting the waveform also shifts its envelope. |
+
+A Hilbert envelope is not inherently a shift-invariant feature vector.
+Alignment or an appropriate aggregation is needed when shift-invariant
+features are required. The `dtw_ta`, `mfcc`, and `hte` adapter names are
+retained as existing API identifiers; their names do not imply additional
+processing beyond the implementations described above.
 
 ## Architecture
 
@@ -196,20 +216,38 @@ single absolute largest-peak anchor.
 
 ### P-stream CSVs
 
-Files like `voltprsr001.csv` and `ai_log001.csv` hold `timestamp,pressure`
-pairs. The `DatasetIndexer` recognises the `voltprsr` and `ai_log` prefixes by
-default and indexes the trailing identifier. See [docs/dataset_indexer.md](docs/dataset_indexer.md) for session handling, case-insensitive lookups and pattern matching. `read_pstream` loads these CSVs and yields
-`PStreamRecord` objects with parsed timestamps and floating-point pressures.
+The `DatasetIndexer` recognises the `voltprsr` and `ai_log` prefixes by
+default and indexes the trailing identifier. See
+[docs/dataset_indexer.md](docs/dataset_indexer.md) for session handling,
+case-insensitive lookups, and pattern matching.
+
+For a headered CSV opened by path, `read_pstream` selects the first header
+containing `timestamp` (case-insensitive). It selects the first other header
+containing `pressure`; if none exists, it uses the first non-timestamp column.
+The selected numeric value is exposed as `PStreamRecord.pressure` without
+unit conversion or calibration. Neither `value_col` nor
+`pressure.scalar_channel` overrides this header-based choice.
+
+For paired-line text records, `value_col` selects a zero-based numeric column
+(default `2`, the third value). The current alignment entry points call
+`read_pstream` with that default rather than forwarding
+`pressure.scalar_channel`. For a different source column, read it explicitly
+or prepare a separate calibrated `timestamp,pressure` CSV before alignment.
 
 ```python
 from echopress.ingest import DatasetIndexer, read_pstream
 
-# Find and read the first P-stream with ID "001"
 indexer = DatasetIndexer("/data")
 pstream_path = indexer.first_pstream("001")
+if pstream_path is None:
+    raise FileNotFoundError("No P-stream found for session 001")
 for record in read_pstream(pstream_path):
+    # Units are determined by the source data and its calibration.
     print(record.timestamp, record.pressure)
 ```
+
+See [docs/pstream.md](docs/pstream.md) for accepted layouts, examples of
+PhantomTest channel headers, and the calibration workflow.
 
 ## Configuration
 
@@ -221,8 +259,9 @@ Settings can be supplied in three complementary ways:
 
 1. **Configuration file** – pass `--config path/to/settings.yaml` to the CLI.
    Files may be JSON or YAML; nested keys must match the structure described
-   below. The provided template includes sensible defaults for calibration,
-   mapping and adapter behaviour.
+   below. The provided template includes configuration defaults; its identity
+   calibration coefficients must be replaced with the measured sensor
+   calibration when converting raw voltage to physical pressure.
 2. **Environment variables** – any field can be overridden by defining
    `ECHOPRESS_<SECTION>__<FIELD>` (note the double underscore to separate nested
    keys). For example,
@@ -238,8 +277,10 @@ Key sections available in the settings schema include:
   matching names like `voltprsr*.csv` and `ai_log*.csv`)
 * `mapping` – alignment and derivative parameters
 * `calibration` – per-channel calibration coefficients
-* `pressure` – which channel contains scalar pressure data; `pressure.scalar_channel`
-  is zero-based, so the default `2` means physical channel 3
+* `pressure` – `pressure.scalar_channel` selects the zero-based coefficient
+  index used by calibration helpers (default `2`, the third coefficient).
+  It does not change `read_pstream` CSV selection or the current alignment
+  entry points' paired-line default; see [P-stream selection](docs/pstream.md).
 * `units` – display units for pressure and voltage
 * `timestamp` – parsing controls
 * `quality` – quality gates for downstream processing

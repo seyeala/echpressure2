@@ -1,13 +1,31 @@
 # DTW-TA Adapter
 
-The Dynamic Time Warping Template Average (DTW-TA) adapter aligns each detected cycle of the waveform to a reference template using constrained DTW and averages the aligned cycles. It is a first-layer cycle-synchronous mapping [Plan].
+**Status: basic cycle segmentation is implemented; DTW template alignment and
+averaging are planned.** The existing adapter identifier is `dtw_ta`.
 
-## Algorithm
-1. Build an initial template from a few cycles or another adapter output.
-2. Align each cycle to the template via constrained DTW (e.g., Sakoe–Chiba band) and resample to a common length $M$.
-3. Robust-average the aligned cycles to produce $x_F \in \mathbb{R}^M$.
+## Current implementation
 
-This procedure handles cycle length drift and shape variability while preserving shift invariance through alignment [Theory].
+`DtwTaAdapter.layer1` calls `cycle_synchronous_map`. It splits a
+one-dimensional signal from its first sample into consecutive fixed-length
+rows. The cycle length is `int(fs / f0)`, unless the `TARGET_CYCLE_LEN`
+environment variable overrides it. A trailing incomplete cycle is discarded.
+
+`layer2` returns `{"cycles": cycles}` without further processing. The output
+has shape `(n_cycles, cycle_len)`. The adapter does not currently detect cycle
+anchors, construct a template, compute a DTW path, resample aligned cycles,
+or average them. It does not provide a shift-invariance guarantee.
+
+## Planned DTW-TA algorithm
+
+The Dynamic Time Warping Template Average design in the roadmap proposes:
+
+1. Building an initial reference template from selected cycles.
+2. Aligning cycles to it with constrained DTW, such as a Sakoe–Chiba band.
+3. Resampling aligned cycles to a common length and computing a robust average.
+
+These steps describe planned work, not behavior available by selecting
+`--adapter dtw_ta`. The current segmented output must not be interpreted as a
+DTW-aligned template average.
 
 ## References
 - **Plan:** *Modular Python Repository Architecture for Pressure–Oscilloscope Dataset Processing, Alignment, Adapters, and Visualization*.

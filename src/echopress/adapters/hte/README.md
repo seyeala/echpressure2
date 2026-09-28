@@ -1,12 +1,40 @@
 # HTE Adapter
 
-The Hilbert Transform Envelope (HTE) adapter computes the analytic signal and extracts its amplitude envelope, yielding a shift-invariant representation of modulation patterns. It is part of the second-layer transform adapters [Plan].
+The Hilbert Transform Envelope (`hte`) adapter computes the amplitude
+envelope of the analytic signal for each segmented cycle.
 
-## Algorithm
-1. Form the analytic signal $a(t)=v(t)+i\,\mathcal{H}\{v(t)\}$ using the Hilbert transform $\mathcal{H}\{\cdot\}$.
-2. Take the envelope $e(t)=|a(t)|$ and optionally rotate or summarize it to obtain a fixed-length vector $x_F$.
+## Current implementation
 
-Because the envelope discards the carrier phase, it is insensitive to global time shifts [Theory].
+`HteAdapter.layer1` uses `cycle_synchronous_map` for fixed-length cycle
+segmentation. In `layer2`, `hilbert_envelope` in `adapters/base.py` uses an
+FFT/IFFT construction of the analytic signal and returns its magnitude:
+
+```text
+analytic_signal = cycle + i * Hilbert(cycle)
+envelope = abs(analytic_signal)
+```
+
+The implementation retains DC and, for even-length cycles, the Nyquist bin,
+doubles positive-frequency bins, and suppresses negative-frequency bins
+before the inverse FFT. The result is returned as
+`{"envelope": envelope}`, with the same `(n_cycles, cycle_len)` shape as
+the input cycle matrix. It does not rotate, align, pool, or summarize the
+envelopes.
+
+## Time shifts and feature interpretation
+
+**The envelope is not inherently shift-invariant.** Shifting a waveform
+also shifts its envelope. In the ideal continuous case,
+`envelope(x(t - tau)) = envelope(x)(t - tau)`; this is shift
+equivariance, not invariance. The FFT-based implementation has the
+corresponding property for circular shifts within a fixed cycle, while
+finite-window boundaries and resegmentation can introduce further changes.
+
+Removing the carrier phase does not remove the timing of amplitude
+variations. If shift-invariant features are required, align the waveforms or
+envelopes to a consistent reference, or choose an appropriate aggregation
+whose shift behavior has been validated. The current HTE adapter does not
+perform those additional steps.
 
 ## References
 - **Plan:** *Modular Python Repository Architecture for Pressure–Oscilloscope Dataset Processing, Alignment, Adapters, and Visualization*.
